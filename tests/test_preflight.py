@@ -60,6 +60,95 @@ class TestPreflight(unittest.TestCase):
         self.assertEqual(report["status"], "failed")
         mock_health.assert_not_called()
 
+    @patch("dataguardian.preflight.check_health")
+    @patch("dataguardian.preflight.get_elasticsearch_version")
+    def test_discovered_matching_version_passes(
+        self, mock_version, mock_health
+    ):
+        mock_version.return_value = {
+            "status": "passed",
+            "version": "8.15.0",
+            "message": "Elasticsearch version retrieved successfully",
+        }
+        mock_health.return_value = {
+            "status": "healthy",
+            "error": None,
+        }
+
+        report = run_preflight(
+            health_url="https://service.example/health",
+            required_version="8.15.0",
+            elasticsearch_url="https://elastic.example:9200",
+        )
+
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["failed_count"], 0)
+        mock_version.assert_called_once_with(
+            "https://elastic.example:9200",
+            timeout=3.0,
+        )
+
+    @patch("dataguardian.preflight.check_health")
+    @patch("dataguardian.preflight.get_elasticsearch_version")
+    def test_discovered_mismatched_version_fails(
+        self, mock_version, mock_health
+    ):
+        mock_version.return_value = {
+            "status": "passed",
+            "version": "8.12.0",
+            "message": "Elasticsearch version retrieved successfully",
+        }
+        mock_health.return_value = {
+            "status": "healthy",
+            "error": None,
+        }
+
+        report = run_preflight(
+            health_url="https://service.example/health",
+            required_version="8.15.0",
+            elasticsearch_url="https://elastic.example:9200",
+        )
+
+        self.assertEqual(report["status"], "failed")
+        self.assertTrue(
+            any(
+                check["name"] == "version_check"
+                and check["status"] == "failed"
+                and check["message"] == "Version mismatch"
+                for check in report["checks"]
+            )
+        )
+
+    @patch("dataguardian.preflight.check_health")
+    @patch("dataguardian.preflight.get_elasticsearch_version")
+    def test_version_discovery_failure_fails_preflight(
+        self, mock_version, mock_health
+    ):
+        mock_version.return_value = {
+            "status": "failed",
+            "version": None,
+            "message": "Connection failed: connection refused",
+        }
+        mock_health.return_value = {
+            "status": "healthy",
+            "error": None,
+        }
+
+        report = run_preflight(
+            health_url="https://service.example/health",
+            required_version="8.15.0",
+            elasticsearch_url="https://elastic.example:9200",
+        )
+
+        self.assertEqual(report["status"], "failed")
+        self.assertTrue(
+            any(
+                check["name"] == "version_check"
+                and check["status"] == "failed"
+                for check in report["checks"]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

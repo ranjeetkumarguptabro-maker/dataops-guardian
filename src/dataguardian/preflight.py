@@ -10,10 +10,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from dataguardian.elasticsearch import get_elasticsearch_version
 from dataguardian.health import check_health
 from dataguardian.version import check_version
 
 logger = logging.getLogger("dataguardian.preflight")
+
+
+def is_http_url(url: str | None) -> bool:
+    """Return whether a URL has a valid HTTP(S) scheme and hostname."""
+    if not url:
+        return False
+
+    try:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.hostname)
+            and parsed.port != 0
+        )
+    except ValueError:
+        return False
 
 
 def run_preflight(
@@ -21,8 +38,10 @@ def run_preflight(
     timeout: float = 3.0,
     required_version: str | None = None,
     actual_version: str | None = None,
+    elasticsearch_url: str | None = None,
 ) -> dict:
-    """Validate prerequisites before a platform upgrade."""
+    """Validate service health and version before maintenance."""
+
     checks = []
 
     def record(name: str, passed: bool, message: str) -> None:
@@ -32,22 +51,18 @@ def run_preflight(
             "message": message,
         })
 
-    # 1. Validate the health-check URL.
-    parsed = urlparse(health_url or "")
-    valid_url = (
-        parsed.scheme in {"http", "https"}
-        and bool(parsed.hostname)
-    )
+    # 1. Validate health-check URL.
+    valid_health_url = is_http_url(health_url)
 
     record(
         "health_url",
-        valid_url,
+        valid_health_url,
         "Valid HTTP(S) URL"
-        if valid_url
+        if valid_health_url
         else "A valid HTTP(S) URL is required",
     )
 
-    # 2. Validate the timeout.
+    # 2. Validate timeout.
     valid_timeout = 0 < timeout <= 60
 
     record(
@@ -58,10 +73,13 @@ def run_preflight(
         else "Timeout must be greater than 0 and no more than 60 seconds",
     )
 
-    # 3. Validate the required-version configuration.
+    # 3. Validate required-version configuration.
     version_config_ok = (
         required_version is None
-        or bool(required_version.strip())
+        or (
+            isinstance(required_version, str)
+            and bool(required_version.strip())
+        )
     )
 
     record(
@@ -72,17 +90,58 @@ def run_preflight(
         else "Required version cannot be empty",
     )
 
-    # 4. Compare versions when a required version is configured.
+    # 4. Discover or accept the actual version, then compare it.
     if required_version is not None and version_config_ok:
-        if actual_version is None:
+        discovered_version = actual_version
+
+        if elasticsearch_url is not None:
+            if not is_http_url(elasticsearch_url):
+                record(
+                    "version_check",
+                    False,
+                    "A valid Elasticsearch HTTP(S) URL is required",
+                )
+            elif not valid_timeout:
+                record(
+                    "version_check",
+                    False,
+                    "Version discovery skipped because timeout is invalid",
+                )
+            else:
+                discovery = get_elasticsearch_version(
+                    elasticsearch_url,
+                    timeout=timeout,
+                )
+
+                if discovery["status"] != "passed":
+                    record(
+                        "version_check",
+                        False,
+                        discovery["message"],
+                    )
+                else:
+                    discovered_version = discovery["version"]
+
+                    version_result = check_version(
+                        discovered_version,
+                        required_version,
+                    )
+
+                    record(
+                        "version_check",
+                        version_result["status"] == "passed",
+                        version_result["message"],
+                    )
+
+        elif discovered_version is None:
             record(
                 "version_check",
                 False,
-                "Actual version is required for comparison",
+                "Provide --elasticsearch-url or --actual-version",
             )
         else:
             version_result = check_version(
-                actual_version,
+                discovered_version,
                 required_version,
             )
 
@@ -92,16 +151,18 @@ def run_preflight(
                 version_result["message"],
             )
 
-    # 5. Run the health check only if the configuration is valid.
-    if valid_url and valid_timeout and version_config_ok:
+    # 5. Check service health only with valid configuration.
+    if valid_health_url and valid_timeout and version_config_ok:
         health = check_health(health_url, timeout)
+
+        healthy = health["status"] == "healthy"
 
         record(
             "service_health",
-            health["status"] == "healthy",
+            healthy,
             "Target endpoint is healthy"
-            if health["status"] == "healthy"
-            else f"Target endpoint is unhealthy: {health['error']}",
+            if healthy
+            else f"Target endpoint is unhealthy: {health.get('error') or 'unknown error'}",
         )
     else:
         record(
@@ -110,7 +171,7 @@ def run_preflight(
             "Skipped because configuration validation failed",
         )
 
-    # 6. Build the overall report.
+    # 6. Build report.
     failed_count = sum(
         check["status"] == "failed"
         for check in checks
@@ -128,7 +189,7 @@ def run_preflight(
 
 
 def save_report(report: dict, output_dir: str = "reports") -> Path:
-    """Save a preflight report as a timestamped JSON file."""
+    """Save a timestamped JSON report."""
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -147,35 +208,41 @@ def save_report(report: dict, output_dir: str = "reports") -> Path:
 
 def main() -> int:
     """Run preflight validation from the command line."""
+
     parser = argparse.ArgumentParser(
-        description="Validate prerequisites before a platform upgrade."
+        description="Validate prerequisites before platform maintenance."
     )
 
     parser.add_argument(
         "--url",
         default=os.getenv("TARGET_HEALTH_URL"),
-        help="Target health URL or TARGET_HEALTH_URL environment variable.",
+        help="Health-check URL or TARGET_HEALTH_URL environment variable.",
     )
     parser.add_argument(
         "--timeout",
         type=float,
         default=3.0,
-        help="Health-check timeout in seconds.",
+        help="Network timeout in seconds.",
     )
     parser.add_argument(
         "--required-version",
         default=os.getenv("REQUIRED_VERSION"),
-        help="Expected platform version.",
+        help="Expected Elasticsearch version.",
     )
     parser.add_argument(
         "--actual-version",
         default=os.getenv("ACTUAL_VERSION"),
-        help="Actual platform version supplied for comparison.",
+        help="Manually supplied version; automatic discovery is preferred.",
+    )
+    parser.add_argument(
+        "--elasticsearch-url",
+        default=os.getenv("ELASTICSEARCH_URL"),
+        help="Elasticsearch base URL for automatic version discovery.",
     )
     parser.add_argument(
         "--report-dir",
         default="reports",
-        help="Directory in which to save the JSON report.",
+        help="Directory for JSON reports.",
     )
 
     args = parser.parse_args()
@@ -194,6 +261,7 @@ def main() -> int:
         timeout=args.timeout,
         required_version=args.required_version,
         actual_version=args.actual_version,
+        elasticsearch_url=args.elasticsearch_url,
     )
 
     print(json.dumps(report, indent=2))
