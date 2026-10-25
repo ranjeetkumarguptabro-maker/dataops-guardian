@@ -145,5 +145,17 @@ class TestPreflight(unittest.TestCase):
         )
 
 
+    @patch("dataguardian.preflight.check_health")
+    def test_report_does_not_expose_url_query_parameters(self, mock_health):
+        mock_health.return_value = {"status": "healthy"}
+
+        report = run_preflight(
+            health_url="https://example.com/health?token=supersecret",
+        )
+
+        self.assertNotIn("supersecret", report["target"])
+        self.assertNotIn("token=", report["target"])
+
+
 if __name__ == "__main__":
     unittest.main()

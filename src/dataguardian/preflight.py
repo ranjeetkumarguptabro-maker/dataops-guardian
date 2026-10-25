@@ -189,7 +189,11 @@ def run_preflight(
         for check in checks
     )
 
-    safe_target = health_url if is_http_url(health_url) else "<invalid URL>"
+    safe_target = (
+        urlparse(health_url.strip())._replace(query="", fragment="").geturl()
+        if is_http_url(health_url)
+        else "<invalid URL>"
+    )
 
     return {
         "component": "dataguardian-preflight",
