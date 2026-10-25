@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 dataops-guardian = "dataguardian.preflight:main"
+dataops-guardian-maintenance = "dataguardian.maintenance_cli:main"
 
 [project.optional-dependencies]
 dev = [
