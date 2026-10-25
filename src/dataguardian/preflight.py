@@ -4,6 +4,7 @@
 import argparse
 import json
 import logging
+import math
 import os
 import sys
 from datetime import datetime, timezone
@@ -18,18 +19,22 @@ logger = logging.getLogger("dataguardian.preflight")
 
 
 def is_http_url(url: str | None) -> bool:
-    """Return whether a URL has a valid HTTP(S) scheme and hostname."""
-    if not url:
+    """Return whether a URL is a valid HTTP(S) URL without embedded credentials."""
+    if not isinstance(url, str) or not url.strip():
         return False
 
     try:
-        parsed = urlparse(url)
+        parsed = urlparse(url.strip())
+
         return (
-            parsed.scheme in {"http", "https"}
+            parsed.scheme.lower() in {"http", "https"}
             and bool(parsed.hostname)
+            and parsed.username is None
+            and parsed.password is None
+            and not parsed.fragment
             and parsed.port != 0
         )
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
 
 
@@ -40,7 +45,7 @@ def run_preflight(
     actual_version: str | None = None,
     elasticsearch_url: str | None = None,
 ) -> dict:
-    """Validate service health and version before maintenance."""
+    """Validate configuration, service health, and version before maintenance."""
 
     checks = []
 
@@ -51,7 +56,7 @@ def run_preflight(
             "message": message,
         })
 
-    # 1. Validate health-check URL.
+    # 1. Validate the health-check URL.
     valid_health_url = is_http_url(health_url)
 
     record(
@@ -59,21 +64,26 @@ def run_preflight(
         valid_health_url,
         "Valid HTTP(S) URL"
         if valid_health_url
-        else "A valid HTTP(S) URL is required",
+        else "A valid HTTP(S) URL without embedded credentials or fragments is required",
     )
 
-    # 2. Validate timeout.
-    valid_timeout = 0 < timeout <= 60
+    # 2. Validate the network timeout.
+    valid_timeout = (
+        isinstance(timeout, (int, float))
+        and not isinstance(timeout, bool)
+        and math.isfinite(timeout)
+        and 0 < timeout <= 60
+    )
 
     record(
         "timeout",
         valid_timeout,
         "Timeout is within the allowed range"
         if valid_timeout
-        else "Timeout must be greater than 0 and no more than 60 seconds",
+        else "Timeout must be a finite number greater than 0 and no more than 60 seconds",
     )
 
-    # 3. Validate required-version configuration.
+    # 3. Validate version configuration.
     version_config_ok = (
         required_version is None
         or (
@@ -87,10 +97,10 @@ def run_preflight(
         version_config_ok,
         "Version configuration is valid"
         if version_config_ok
-        else "Required version cannot be empty",
+        else "Required version must not be empty",
     )
 
-    # 4. Discover or accept the actual version, then compare it.
+    # 4. Discover or accept the actual version and compare it.
     if required_version is not None and version_config_ok:
         discovered_version = actual_version
 
@@ -99,7 +109,7 @@ def run_preflight(
                 record(
                     "version_check",
                     False,
-                    "A valid Elasticsearch HTTP(S) URL is required",
+                    "A valid Elasticsearch HTTP(S) URL without embedded credentials or fragments is required",
                 )
             elif not valid_timeout:
                 record(
@@ -113,14 +123,17 @@ def run_preflight(
                     timeout=timeout,
                 )
 
-                if discovery["status"] != "passed":
+                if discovery.get("status") != "passed":
                     record(
                         "version_check",
                         False,
-                        discovery["message"],
+                        discovery.get(
+                            "message",
+                            "Elasticsearch version discovery failed",
+                        ),
                     )
                 else:
-                    discovered_version = discovery["version"]
+                    discovered_version = discovery.get("version")
 
                     version_result = check_version(
                         discovered_version,
@@ -151,18 +164,17 @@ def run_preflight(
                 version_result["message"],
             )
 
-    # 5. Check service health only with valid configuration.
+    # 5. Check service health only when configuration is valid.
     if valid_health_url and valid_timeout and version_config_ok:
         health = check_health(health_url, timeout)
-
-        healthy = health["status"] == "healthy"
+        healthy = health.get("status") == "healthy"
 
         record(
             "service_health",
             healthy,
             "Target endpoint is healthy"
             if healthy
-            else f"Target endpoint is unhealthy: {health.get('error') or 'unknown error'}",
+            else "Target endpoint is unhealthy",
         )
     else:
         record(
@@ -171,16 +183,18 @@ def run_preflight(
             "Skipped because configuration validation failed",
         )
 
-    # 6. Build report.
+    # 6. Build a report without embedding credentials in target URLs.
     failed_count = sum(
         check["status"] == "failed"
         for check in checks
     )
 
+    safe_target = health_url if is_http_url(health_url) else "<invalid URL>"
+
     return {
         "component": "dataguardian-preflight",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "target": health_url,
+        "target": safe_target,
         "status": "passed" if failed_count == 0 else "failed",
         "checks": checks,
         "check_count": len(checks),
@@ -222,7 +236,7 @@ def main() -> int:
         "--timeout",
         type=float,
         default=3.0,
-        help="Network timeout in seconds.",
+        help="Network timeout in seconds (greater than 0, maximum 60).",
     )
     parser.add_argument(
         "--required-version",
@@ -268,8 +282,8 @@ def main() -> int:
 
     try:
         report_path = save_report(report, args.report_dir)
-    except OSError as exc:
-        logger.error("Could not save preflight report: %s", exc)
+    except OSError:
+        logger.error("Could not save preflight report.")
         return 2
 
     logger.info("Report saved to %s", report_path)
