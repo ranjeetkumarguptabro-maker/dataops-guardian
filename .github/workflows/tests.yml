@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-
   pull_request:
     branches:
       - main
@@ -31,5 +30,8 @@ jobs:
       - name: Install project and development dependencies
         run: python -m pip install -e ".[dev]"
 
-      - name: Run tests with pytest
+      - name: Verify pytest installation
+        run: python -m pytest --version
+
+      - name: Run tests
         run: python -m pytest -v
