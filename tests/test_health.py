@@ -1,4 +1,3 @@
-
 """Unit tests for DataOps Guardian health checks."""
 
 import unittest
@@ -9,7 +8,6 @@ from dataguardian.health import check_health
 
 
 class TestHealthCheck(unittest.TestCase):
-
     @patch("dataguardian.health.urlopen")
     def test_successful_response(self, mock_urlopen):
         response = MagicMock()
@@ -64,8 +62,14 @@ class TestHealthCheck(unittest.TestCase):
         result = check_health("https://service.example/health")
 
         required_fields = {
-            "service", "target", "status", "http_status",
-            "duration_ms", "checked_at", "error_type", "error",
+            "service",
+            "target",
+            "status",
+            "http_status",
+            "duration_ms",
+            "checked_at",
+            "error_type",
+            "error",
         }
         self.assertTrue(required_fields.issubset(result.keys()))
 

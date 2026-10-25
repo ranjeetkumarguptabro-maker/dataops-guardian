@@ -1,4 +1,3 @@
-
 name: DataOps Guardian CI
 
 on:
@@ -11,7 +10,7 @@ on:
 
 jobs:
   test:
-    name: Run Python Tests
+    name: Lint, Format, and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -32,6 +31,12 @@ jobs:
 
       - name: Verify pytest installation
         run: python -m pytest --version
+
+      - name: Lint with Ruff
+        run: ruff check .
+
+      - name: Check formatting with Ruff
+        run: ruff format --check .
 
       - name: Run tests
         run: python -m pytest -v

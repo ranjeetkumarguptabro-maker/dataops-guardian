@@ -1,4 +1,3 @@
-
 import base64
 import json
 import os
@@ -10,15 +9,14 @@ from dataguardian.elasticsearch import get_elasticsearch_version
 
 
 class TestElasticsearchVersion(unittest.TestCase):
-
     def setUp(self):
         self.url = "https://localhost:9200"
 
     def mock_success(self, mock_urlopen, version="8.15.0"):
         response = MagicMock()
-        response.read.return_value = json.dumps({
-            "version": {"number": version}
-        }).encode("utf-8")
+        response.read.return_value = json.dumps(
+            {"version": {"number": version}}
+        ).encode("utf-8")
         mock_urlopen.return_value.__enter__.return_value = response
 
     @patch("dataguardian.elasticsearch.urlopen")
@@ -52,9 +50,7 @@ class TestElasticsearchVersion(unittest.TestCase):
         )
 
         request = mock_urlopen.call_args.args[0]
-        expected = base64.b64encode(
-            b"test-user:test-password"
-        ).decode("ascii")
+        expected = base64.b64encode(b"test-user:test-password").decode("ascii")
 
         self.assertEqual(
             request.get_header("Authorization"),
@@ -77,9 +73,7 @@ class TestElasticsearchVersion(unittest.TestCase):
             result = get_elasticsearch_version(self.url)
 
         request = mock_urlopen.call_args.args[0]
-        expected = base64.b64encode(
-            b"env-user:env-password"
-        ).decode("ascii")
+        expected = base64.b64encode(b"env-user:env-password").decode("ascii")
 
         self.assertEqual(
             request.get_header("Authorization"),
@@ -93,9 +87,7 @@ class TestElasticsearchVersion(unittest.TestCase):
             {"ELASTICSEARCH_USERNAME": "test-user"},
             clear=True,
         ):
-            with patch(
-                "dataguardian.elasticsearch.urlopen"
-            ) as mock_urlopen:
+            with patch("dataguardian.elasticsearch.urlopen") as mock_urlopen:
                 result = get_elasticsearch_version(self.url)
 
         self.assertEqual(result["status"], "failed")
@@ -140,9 +132,7 @@ class TestElasticsearchVersion(unittest.TestCase):
 
     @patch("dataguardian.elasticsearch.urlopen")
     def test_url_with_credentials_is_rejected(self, mock_urlopen):
-        result = get_elasticsearch_version(
-            "https://admin:secret@example.com:9200"
-        )
+        result = get_elasticsearch_version("https://admin:secret@example.com:9200")
 
         self.assertEqual(result["status"], "failed")
         mock_urlopen.assert_not_called()

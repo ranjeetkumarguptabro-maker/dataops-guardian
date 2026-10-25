@@ -1,4 +1,3 @@
-
 """Version validation utilities for DataOps Guardian."""
 
 
@@ -28,8 +27,6 @@ def check_version(
         "actual_version": actual,
         "required_version": required,
         "message": (
-            "Version matches the required version"
-            if passed
-            else "Version mismatch"
+            "Version matches the required version" if passed else "Version mismatch"
         ),
     }

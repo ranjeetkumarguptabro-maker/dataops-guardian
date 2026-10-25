@@ -1,4 +1,3 @@
-
 import unittest
 from unittest.mock import patch
 
@@ -9,7 +8,6 @@ from dataguardian.preflight import (
 
 
 class TestPreflight(unittest.TestCase):
-
     @patch("dataguardian.preflight.check_health")
     def test_all_checks_pass(self, mock_health):
         mock_health.return_value = {"status": "healthy"}
@@ -26,9 +24,7 @@ class TestPreflight(unittest.TestCase):
 
     @patch("dataguardian.preflight.check_health")
     @patch("dataguardian.preflight.get_elasticsearch_version")
-    def test_discovered_matching_version_passes(
-        self, mock_version, mock_health
-    ):
+    def test_discovered_matching_version_passes(self, mock_version, mock_health):
         mock_version.return_value = {
             "status": "passed",
             "version": "8.15.0",
@@ -47,9 +43,7 @@ class TestPreflight(unittest.TestCase):
 
     @patch("dataguardian.preflight.check_health")
     @patch("dataguardian.preflight.get_elasticsearch_version")
-    def test_discovered_mismatched_version_fails(
-        self, mock_version, mock_health
-    ):
+    def test_discovered_mismatched_version_fails(self, mock_version, mock_health):
         mock_version.return_value = {
             "status": "passed",
             "version": "8.14.0",
@@ -109,9 +103,7 @@ class TestPreflight(unittest.TestCase):
 
     @patch("dataguardian.preflight.check_health")
     @patch("dataguardian.preflight.get_elasticsearch_version")
-    def test_version_discovery_failure_fails_preflight(
-        self, mock_version, mock_health
-    ):
+    def test_version_discovery_failure_fails_preflight(self, mock_version, mock_health):
         mock_version.return_value = {
             "status": "failed",
             "version": None,
@@ -130,20 +122,13 @@ class TestPreflight(unittest.TestCase):
     # Security tests
 
     def test_url_with_embedded_credentials_is_rejected(self):
-        self.assertFalse(
-            is_http_url("https://admin:secret@example.com/health")
-        )
+        self.assertFalse(is_http_url("https://admin:secret@example.com/health"))
 
     def test_url_with_fragment_is_rejected(self):
-        self.assertFalse(
-            is_http_url("https://example.com/health#section")
-        )
+        self.assertFalse(is_http_url("https://example.com/health#section"))
 
     def test_valid_https_url_is_accepted(self):
-        self.assertTrue(
-            is_http_url("https://example.com/health")
-        )
-
+        self.assertTrue(is_http_url("https://example.com/health"))
 
     @patch("dataguardian.preflight.check_health")
     def test_report_does_not_expose_url_query_parameters(self, mock_health):

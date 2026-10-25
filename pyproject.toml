@@ -16,6 +16,7 @@ dataops-guardian = "dataguardian.preflight:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<10",
+    "ruff>=0.14,<1",
 ]
 
 [tool.setuptools.packages.find]
@@ -25,3 +26,11 @@ where = ["src"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

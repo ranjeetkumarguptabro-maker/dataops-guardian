@@ -1,4 +1,3 @@
-
 """Utilities for securely discovering an Elasticsearch server version."""
 
 import base64
@@ -75,9 +74,9 @@ def get_elasticsearch_version(
     headers = {"Accept": "application/json"}
 
     if username is not None and password is not None:
-        credentials = base64.b64encode(
-            f"{username}:{password}".encode("utf-8")
-        ).decode("ascii")
+        credentials = base64.b64encode(f"{username}:{password}".encode()).decode(
+            "ascii"
+        )
         headers["Authorization"] = f"Basic {credentials}"
 
     request = Request(

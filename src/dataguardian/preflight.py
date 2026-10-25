@@ -1,4 +1,3 @@
-
 """Pre-upgrade validation for DataOps Guardian."""
 
 import argparse
@@ -50,11 +49,13 @@ def run_preflight(
     checks = []
 
     def record(name: str, passed: bool, message: str) -> None:
-        checks.append({
-            "name": name,
-            "status": "passed" if passed else "failed",
-            "message": message,
-        })
+        checks.append(
+            {
+                "name": name,
+                "status": "passed" if passed else "failed",
+                "message": message,
+            }
+        )
 
     # 1. Validate the health-check URL.
     valid_health_url = is_http_url(health_url)
@@ -64,7 +65,9 @@ def run_preflight(
         valid_health_url,
         "Valid HTTP(S) URL"
         if valid_health_url
-        else "A valid HTTP(S) URL without embedded credentials or fragments is required",
+        else (
+            "A valid HTTP(S) URL without embedded credentials or fragments is required"
+        ),
     )
 
     # 2. Validate the network timeout.
@@ -80,16 +83,14 @@ def run_preflight(
         valid_timeout,
         "Timeout is within the allowed range"
         if valid_timeout
-        else "Timeout must be a finite number greater than 0 and no more than 60 seconds",
+        else (
+            "Timeout must be a finite number greater than 0 and no more than 60 seconds"
+        ),
     )
 
     # 3. Validate version configuration.
-    version_config_ok = (
-        required_version is None
-        or (
-            isinstance(required_version, str)
-            and bool(required_version.strip())
-        )
+    version_config_ok = required_version is None or (
+        isinstance(required_version, str) and bool(required_version.strip())
     )
 
     record(
@@ -109,7 +110,10 @@ def run_preflight(
                 record(
                     "version_check",
                     False,
-                    "A valid Elasticsearch HTTP(S) URL without embedded credentials or fragments is required",
+                    (
+                        "A valid Elasticsearch HTTP(S) URL without embedded "
+                        "credentials or fragments is required"
+                    ),
                 )
             elif not valid_timeout:
                 record(
@@ -172,9 +176,7 @@ def run_preflight(
         record(
             "service_health",
             healthy,
-            "Target endpoint is healthy"
-            if healthy
-            else "Target endpoint is unhealthy",
+            "Target endpoint is healthy" if healthy else "Target endpoint is unhealthy",
         )
     else:
         record(
@@ -184,10 +186,7 @@ def run_preflight(
         )
 
     # 6. Build a report without embedding credentials in target URLs.
-    failed_count = sum(
-        check["status"] == "failed"
-        for check in checks
-    )
+    failed_count = sum(check["status"] == "failed" for check in checks)
 
     safe_target = (
         urlparse(health_url.strip())._replace(query="", fragment="").geturl()
@@ -211,9 +210,7 @@ def save_report(report: dict, output_dir: str = "reports") -> Path:
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now(timezone.utc).strftime(
-        "%Y%m%dT%H%M%S%fZ"
-    )
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     output_path = directory / f"preflight-{timestamp}.json"
 
     output_path.write_text(

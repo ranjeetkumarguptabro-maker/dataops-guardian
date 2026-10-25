@@ -1,4 +1,3 @@
-
 """HTTP health checks for DataOps Guardian."""
 
 import argparse
@@ -69,9 +68,7 @@ def check_health(url: str, timeout: float = 3.0) -> dict:
         result["error_type"] = "request_error"
         result["error"] = str(exc)
 
-    result["duration_ms"] = round(
-        (time.monotonic() - started) * 1000, 2
-    )
+    result["duration_ms"] = round((time.monotonic() - started) * 1000, 2)
 
     if result["status"] != "healthy":
         logger.warning(
@@ -91,9 +88,7 @@ def check_health(url: str, timeout: float = 3.0) -> dict:
 
 def main() -> int:
     """Parse arguments, run the check, and return a process exit code."""
-    parser = argparse.ArgumentParser(
-        description="Check an HTTP service's health."
-    )
+    parser = argparse.ArgumentParser(description="Check an HTTP service's health.")
     parser.add_argument(
         "--url",
         default=os.getenv("TARGET_HEALTH_URL"),
