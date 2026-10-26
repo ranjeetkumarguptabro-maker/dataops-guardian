@@ -128,7 +128,6 @@ def run_maintenance_workflow(
 
     directory = Path(report_dir)
     directory.mkdir(parents=True, exist_ok=True)
-
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     report_path = directory / f"maintenance-{timestamp}.json"
 

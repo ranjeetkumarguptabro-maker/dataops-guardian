@@ -39,10 +39,7 @@ def main() -> int:
     parser.add_argument(
         "--execute",
         action="store_true",
-        help=(
-            "Disable dry-run planning; does not perform real maintenance "
-            "without a configured executor"
-        ),
+        help="Request execution; unavailable until an executor is configured",
     )
     parser.add_argument(
         "--report-dir",
@@ -52,6 +49,12 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if args.execute:
+        parser.error(
+            "Execution is disabled because no maintenance executor is configured. "
+            "Remove --execute to run a safe dry run."
+        )
+
     report = run_maintenance_workflow(
         health_url=args.url,
         operation=args.operation,
@@ -60,7 +63,7 @@ def main() -> int:
         actual_version=args.actual_version,
         elasticsearch_url=args.elasticsearch_url,
         approved=args.approve,
-        dry_run=not args.execute,
+        dry_run=True,
         report_dir=args.report_dir,
     )
 
