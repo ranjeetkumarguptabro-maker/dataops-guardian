@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 from dataguardian.preflight import (
     is_http_url,
     run_preflight,
@@ -144,3 +146,16 @@ class TestPreflight(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [0, -1, 60.1, float("inf"), float("-inf"), float("nan"), True, False],
+)
+def test_invalid_timeout_is_rejected(timeout):
+    result = run_preflight(
+        health_url="http://localhost:8080/health",
+        timeout=timeout,
+    )
+
+    assert result["status"] == "failed"

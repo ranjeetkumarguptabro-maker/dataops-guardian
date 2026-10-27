@@ -20,4 +20,6 @@ CMD ["python", "-m", "pytest", "-v"]
 
 FROM base AS production
 
-CMD ["python", "-m", "dataguardian.maintenance_cli", "--help"]
+EXPOSE 8080
+
+CMD ["python", "-m", "dataguardian.health_server"]

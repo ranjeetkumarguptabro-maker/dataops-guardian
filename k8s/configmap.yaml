@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dataops-guardian-config
+data:
+  PORT: "8080"
+  SERVICE_NAME: "dataops-guardian"

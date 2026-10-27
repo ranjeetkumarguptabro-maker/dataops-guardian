@@ -7,3 +7,12 @@ __pycache__/
 reports/
 .coverage
 .coverage.*
+
+# Local Kubernetes binary
+minikube-darwin-arm64
+
+# Local script backups
+scripts/*.bak
+
+# Generated maintenance logs
+logs/*.log

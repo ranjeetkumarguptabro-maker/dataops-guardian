@@ -220,3 +220,52 @@ class TestMaintenance(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@patch("dataguardian.maintenance.run_preflight")
+def test_executor_exception_is_recorded_as_failure(mock_preflight):
+    mock_preflight.return_value = {
+        "status": "passed",
+        "target": "http://localhost:8080/health",
+        "failed_count": 0,
+    }
+
+    def failing_executor(_operation):
+        raise RuntimeError("simulated maintenance failure")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        result = run_maintenance_workflow(
+            health_url="http://localhost:8080/health",
+            operation="rolling_restart",
+            approved=True,
+            dry_run=False,
+            executor=failing_executor,
+            report_dir=temp_dir,
+        )
+
+    assert result["status"] == "failed"
+    assert result["execution"]["status"] == "failed"
+    assert result["execution"]["changes_made"] is False
+
+
+@patch("dataguardian.maintenance.run_preflight")
+def test_executor_invalid_result_is_recorded_as_failure(mock_preflight):
+    mock_preflight.return_value = {
+        "status": "passed",
+        "target": "http://localhost:8080/health",
+        "failed_count": 0,
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        result = run_maintenance_workflow(
+            health_url="http://localhost:8080/health",
+            operation="rolling_restart",
+            approved=True,
+            dry_run=False,
+            executor=lambda _operation: None,
+            report_dir=temp_dir,
+        )
+
+    assert result["status"] == "failed"
+    assert result["execution"]["status"] == "failed"
+    assert result["execution"]["changes_made"] is False
