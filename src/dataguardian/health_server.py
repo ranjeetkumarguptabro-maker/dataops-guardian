@@ -1,4 +1,3 @@
-
 """HTTP health server for DataOps Guardian."""
 
 import json
