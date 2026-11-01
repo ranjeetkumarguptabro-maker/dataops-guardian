@@ -1,0 +1,18 @@
+# Local Splunk for testing. The image is amd64 only, so it runs slowly under
+# emulation on Apple Silicon. Starting it accepts Splunk's license and terms.
+# Set SPLUNK_PASSWORD and SPLUNK_HEC_TOKEN in your shell first.
+services:
+  splunk:
+    image: splunk/splunk:latest
+    platform: linux/amd64
+    container_name: dataops-splunk
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com
+      - SPLUNK_PASSWORD
+      - SPLUNK_HEC_TOKEN
+      - SPLUNK_HEC_SSL=false
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8088:8088"
+      - "127.0.0.1:8089:8089"

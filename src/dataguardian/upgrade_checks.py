@@ -281,11 +281,13 @@ def run_upgrade_checks(
     }
 
 
-def save_report(report: dict, report_dir: str = "reports") -> str:
+def save_report(
+    report: dict, report_dir: str = "reports", prefix: str = "upgrade-check"
+) -> str:
     """Write a report to a timestamped JSON file and return its path."""
     directory = Path(report_dir)
     directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    report_path = directory / f"upgrade-check-{timestamp}.json"
+    report_path = directory / f"{prefix}-{timestamp}.json"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return str(report_path)

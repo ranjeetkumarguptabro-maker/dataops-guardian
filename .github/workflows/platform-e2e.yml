@@ -1,0 +1,123 @@
+name: Platform End-to-End
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/dataguardian/**"
+      - "k8s/elasticsearch/**"
+      - "scripts/e2e_es_upgrade.sh"
+      - "scripts/es_probe.py"
+      - ".github/workflows/platform-e2e.yml"
+
+jobs:
+  elasticsearch-rolling-upgrade:
+    name: Elasticsearch Rolling Upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install DataOps Guardian
+        run: python -m pip install .
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: guardian
+
+      - name: Run upgrade test
+        run: ./scripts/e2e_es_upgrade.sh
+
+      - name: Show cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n elasticsearch get pods -o wide || true
+          kubectl -n elasticsearch describe pods -l app=elasticsearch | tail -60 || true
+          kubectl -n elasticsearch logs -l app=elasticsearch --tail=40 || true
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolling-upgrade-reports
+          path: reports/
+
+  splunk-integration:
+    name: Splunk Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install DataOps Guardian
+        run: python -m pip install .
+
+      # Credentials are generated per run, so none are stored in the repository.
+      - name: Generate throwaway credentials
+        run: |
+          echo "SPLUNK_PASSWORD=$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" >> "$GITHUB_ENV"
+          echo "SPLUNK_HEC_TOKEN=$(python -c 'import uuid;print(uuid.uuid4())')" >> "$GITHUB_ENV"
+
+      - name: Start Splunk
+        run: docker compose -f compose.splunk.yaml up -d
+
+      - name: Wait for the HTTP Event Collector
+        run: |
+          python - <<'EOF'
+          import time
+          from dataguardian.splunk import check_splunk_health
+
+          for _ in range(90):
+              if check_splunk_health("http://localhost:8088")["status"] == "passed":
+                  print("Splunk is ready")
+                  raise SystemExit(0)
+              time.sleep(5)
+          raise SystemExit("Splunk did not become ready")
+          EOF
+
+      - name: Send a report and find it by searching Splunk
+        env:
+          SPLUNK_HEC_URL: http://localhost:8088
+        run: |
+          MARKER="e2e-$GITHUB_RUN_ID"
+          MARKER="$MARKER" python - <<'EOF'
+          import os
+          from dataguardian.splunk import publish_report
+
+          result = publish_report({"status": "ready", "marker": os.environ["MARKER"]})
+          print(result)
+          raise SystemExit(0 if result["status"] == "passed" else 1)
+          EOF
+          for attempt in $(seq 1 24); do
+            if curl -sk -u "admin:$SPLUNK_PASSWORD" \
+                https://localhost:8089/services/search/jobs/export \
+                --data-urlencode "search=search index=main sourcetype=dataguardian:report $MARKER" \
+                -d output_mode=json | grep -q "$MARKER"; then
+              echo "Report found in Splunk"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Report was not found in Splunk"
+          exit 1
+
+      - name: Show Splunk logs on failure
+        if: failure()
+        run: docker logs dataops-splunk --tail 40

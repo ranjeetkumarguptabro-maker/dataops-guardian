@@ -3,6 +3,7 @@
 import argparse
 import json
 
+from dataguardian.splunk import publish_report
 from dataguardian.upgrade_checks import run_upgrade_checks, save_report
 
 
@@ -36,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     report = run_upgrade_checks(args.url, args.target_version, timeout=args.timeout)
+    report["splunk"] = publish_report(report)
     report["report_path"] = save_report(report, args.report_dir)
 
     print(json.dumps(report, indent=2))

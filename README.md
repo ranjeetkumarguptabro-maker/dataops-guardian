@@ -20,7 +20,12 @@ rolls back automatically when an upgrade fails.
 - **Elasticsearch upgrade readiness checks** that decide whether a cluster is
   safe to upgrade, using read-only API calls
 
-Planned: running Elasticsearch upgrades on Kubernetes, then Splunk integration.
+- **Rolling Elasticsearch upgrades on Kubernetes**, one node at a time, with
+  resume after failure
+- **Splunk reporting** that sends every check and upgrade report to the HTTP
+  Event Collector
+
+Planned: Kibana dashboards, and upgrade automation for Splunk.
 
 ## Run the tests
 
@@ -105,6 +110,59 @@ Upgrade paths follow
 [Elastic's documentation](https://www.elastic.co/docs/deploy-manage/upgrade/prepare-to-upgrade):
 9.1 and later require 8.19, 9.0 requires 8.18 or 8.19, and 8.x requires 7.17.
 
+## Run a rolling Elasticsearch upgrade
+
+`k8s/elasticsearch/elasticsearch.yaml` deploys a three-node test cluster with
+security disabled. Without `--execute`, the command only prints a plan:
+
+```bash
+dataops-guardian-es-upgrade --target-version 8.19.12
+```
+
+```bash
+dataops-guardian-es-upgrade --target-version 8.19.12 --execute --accept-warnings
+```
+
+The tool runs the readiness checks, then for each node, with the elected master
+last:
+
+1. Restricts shard allocation to primaries and flushes
+2. Deletes the pod so it restarts on the new image
+3. Waits for the node to rejoin on the target version
+4. Restores allocation and waits for shards to recover
+
+It finishes by checking that the cluster is green, every node runs the target
+version, allocation is restored and no documents were lost.
+
+### Why there is no automatic rollback
+
+Elasticsearch nodes cannot be downgraded after they start on a newer version, so
+rolling the image back would not work. The tool stops at the first failure,
+restores shard allocation and leaves remaining nodes untouched. Fix the cause and
+continue with `--resume`, which may use a different target but never an older one.
+Recovering from a bad upgrade means restoring a snapshot, which is why the
+readiness checks look for a recent one.
+
+### End-to-end test
+
+`scripts/e2e_es_upgrade.sh` runs in GitHub Actions because it needs more memory
+than a typical laptop can spare. It upgrades 8.17.4 to 8.19.12 to 9.5.5 while a
+probe inside the cluster reads and writes every second, and it covers a blocked
+upgrade path, a dry run and a bad image followed by a resume. The test fails if
+any acknowledged write or seeded document is lost.
+
+## Send reports to Splunk
+
+```bash
+export SPLUNK_HEC_URL=https://splunk.example:8088
+export SPLUNK_HEC_TOKEN=your-token
+```
+
+Both commands then send their reports with the sourcetype `dataguardian:report`.
+A Splunk outage is recorded in the report and never changes the upgrade's outcome.
+`compose.splunk.yaml` starts a local Splunk for testing; starting it accepts
+Splunk's license and terms.
+
 ## Project layout
 
 | Path | Purpose |
@@ -113,4 +171,6 @@ Upgrade paths follow
 | `tests/` | Unit and integration tests |
 | `helm/dataops-guardian/` | Helm chart |
 | `scripts/` | Deployment and audit logging |
+| `k8s/elasticsearch/` | Three-node Elasticsearch test cluster |
 | `.github/workflows/tests.yml` | CI pipeline |
+| `.github/workflows/platform-e2e.yml` | Live upgrade and Splunk tests |

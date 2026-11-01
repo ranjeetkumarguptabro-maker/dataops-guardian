@@ -13,6 +13,7 @@ dependencies = []
 dataops-guardian = "dataguardian.preflight:main"
 dataops-guardian-maintenance = "dataguardian.maintenance_cli:main"
 dataops-guardian-upgrade-check = "dataguardian.upgrade_cli:main"
+dataops-guardian-es-upgrade = "dataguardian.es_upgrade_cli:main"
 
 [project.optional-dependencies]
 dev = [

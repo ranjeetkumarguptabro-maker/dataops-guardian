@@ -22,6 +22,19 @@ def fetch_json(
     password: str | None = None,
 ):
     """Send a read-only GET request to Elasticsearch and return the parsed JSON."""
+    return request_json(base_url, path, timeout, username, password)
+
+
+def request_json(
+    base_url: str,
+    path: str = "/",
+    timeout: float = 3.0,
+    username: str | None = None,
+    password: str | None = None,
+    method: str = "GET",
+    body: dict | None = None,
+):
+    """Send a request to Elasticsearch and return the parsed JSON response."""
     # Validate inputs before making a network request.
     if not isinstance(base_url, str) or not base_url.strip():
         raise ElasticsearchError("A valid Elasticsearch URL is required")
@@ -82,10 +95,16 @@ def fetch_json(
         )
         headers["Authorization"] = f"Basic {credentials}"
 
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
     request = Request(
         base_url.strip().rstrip("/") + path,
+        data=data,
         headers=headers,
-        method="GET",
+        method=method,
     )
 
     try:
