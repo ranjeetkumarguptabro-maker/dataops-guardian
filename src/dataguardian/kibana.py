@@ -54,7 +54,12 @@ def import_dashboard(kibana_url: str, path: str, timeout: float = 30.0) -> dict:
     except HTTPError as exc:
         if exc.code in (401, 403):
             return {"status": "failed", "message": "Kibana rejected the credentials"}
-        return {"status": "failed", "message": f"Kibana returned HTTP {exc.code}"}
+        detail = exc.read().decode("utf-8", "replace")[:500] if exc.fp else ""
+        return {
+            "status": "failed",
+            "message": f"Kibana returned HTTP {exc.code}",
+            "detail": detail,
+        }
     except (URLError, TimeoutError, OSError):
         return {"status": "failed", "message": "Could not connect to Kibana"}
     except (json.JSONDecodeError, UnicodeDecodeError):

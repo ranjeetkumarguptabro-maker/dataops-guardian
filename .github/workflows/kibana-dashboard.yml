@@ -67,6 +67,10 @@ jobs:
       - name: Take a screenshot
         run: python scripts/kibana_screenshot.py http://localhost:5601 kibana-dashboard.png
 
+      - name: Show Kibana logs on failure
+        if: failure()
+        run: docker compose -f compose.kibana.yaml logs kibana --tail 40
+
       - name: Upload screenshot
         if: always()
         uses: actions/upload-artifact@v4
