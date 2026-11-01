@@ -53,6 +53,7 @@ run_with_probe() {
     probe_pid=$!
     output="$(upgrade --target-version "$version" --execute --accept-warnings "$@" ||
         true)"
+    echo "$output" >"$OUT/last-report.json"
     expect "upgrade to $version" completed "$(field status <<<"$output")"
     wait "$probe_pid" || fail "probe for $version did not finish"
     echo "Client view during upgrade to $version: $(cat "$OUT/probe-$index.json")"
@@ -112,8 +113,23 @@ expect "seed documents after failure" 1000 \
 echo "=== Resume to a good version with clients running"
 run_with_probe "$FIRST" probe-writes-first --resume
 
-echo "=== Major upgrade with clients running"
-run_with_probe "$FINAL" probe-writes-final
+echo "=== Major upgrade with clients running, after a snapshot"
+POD="$(ready_pod)"
+es "$POD" -XPUT localhost:9200/_snapshot/guardian -H 'content-type: application/json' \
+    -d '{"type":"fs","settings":{"location":"/snapshots"}}'
+echo
+run_with_probe "$FINAL" probe-writes-final --snapshot-repository guardian
+
+echo "=== The snapshot taken before the upgrade must restore on the new version"
+SNAPSHOT="$(field snapshot <"$OUT/last-report.json")"
+POD="$(ready_pod)"
+es "$POD" -XPOST \
+    "localhost:9200/_snapshot/guardian/$SNAPSHOT/_restore?wait_for_completion=true" \
+    -H 'content-type: application/json' -d '{"indices":"upgrade-test",
+    "rename_pattern":"(.+)","rename_replacement":"restored-$1"}' >/dev/null
+es "$POD" -XPOST localhost:9200/restored-upgrade-test/_refresh >/dev/null
+expect "documents restored from snapshot" 1000 \
+    "$(es "$POD" localhost:9200/restored-upgrade-test/_count | field count)"
 
 echo "=== Final state"
 POD="$(ready_pod)"

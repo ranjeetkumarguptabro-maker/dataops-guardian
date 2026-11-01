@@ -69,6 +69,14 @@ spec:
       terminationGracePeriodSeconds: 60
       securityContext:
         fsGroup: 1000
+      # fsGroup does not apply to hostPath, so the snapshot folder needs its owner set.
+      initContainers:
+        - name: snapshot-permissions
+          image: busybox:1.36
+          command: ["chown", "-R", "1000:1000", "/snapshots"]
+          volumeMounts:
+            - name: snapshots
+              mountPath: /snapshots
       containers:
         - name: elasticsearch
           image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
@@ -88,6 +96,8 @@ spec:
             # Avoids needing a privileged init container to raise vm.max_map_count.
             - name: node.store.allow_mmap
               value: "false"
+            - name: path.repo
+              value: /snapshots
             - name: ES_JAVA_OPTS
               value: "-Xms256m -Xmx256m"
           ports:
@@ -111,6 +121,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /usr/share/elasticsearch/data
+            - name: snapshots
+              mountPath: /snapshots
+      # Every node must see the same repository. A hostPath only does that on a
+      # one-machine test cluster; production needs shared or object storage.
+      volumes:
+        - name: snapshots
+          hostPath:
+            path: /var/lib/guardian-snapshots
+            type: DirectoryOrCreate
   volumeClaimTemplates:
     - metadata:
         name: data

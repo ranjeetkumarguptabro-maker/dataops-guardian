@@ -59,6 +59,17 @@ class TestElasticsearchVersion(unittest.TestCase):
         self.assertEqual(result["status"], "passed")
 
     @patch("dataguardian.elasticsearch.urlopen")
+    def test_api_key_from_environment_is_used(self, mock_urlopen):
+        self.mock_success(mock_urlopen)
+
+        with patch.dict(os.environ, {"ELASTICSEARCH_API_KEY": "test-key"}):
+            result = get_elasticsearch_version(self.url)
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.get_header("Authorization"), "ApiKey test-key")
+        self.assertEqual(result["status"], "passed")
+
+    @patch("dataguardian.elasticsearch.urlopen")
     def test_environment_credentials_are_used(self, mock_urlopen):
         self.mock_success(mock_urlopen)
 

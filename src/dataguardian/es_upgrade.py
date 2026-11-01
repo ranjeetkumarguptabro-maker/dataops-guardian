@@ -7,11 +7,13 @@ and can be resumed; it never tries to roll back.
 
 import json
 import logging
+import re
 import subprocess
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from dataguardian.elasticsearch import ElasticsearchError, request_json
 from dataguardian.upgrade_checks import parse_version, run_upgrade_checks
@@ -25,10 +27,37 @@ IMAGE_FAILURES = {"ErrImagePull", "ImagePullBackOff", "ErrImageNeverPull"}
 # with mixed versions, a raised version and possibly restricted allocation.
 RESUME_IGNORED_CHECKS = {"upgrade_path", "nodes", "shard_allocation", "cluster_health"}
 SETTLED_POLLS = 3
+SNAPSHOT_REPOSITORY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 class UpgradeError(Exception):
     """The upgrade cannot continue safely."""
+
+
+def validate_statefulset(statefulset: dict) -> list[str]:
+    """Return configuration problems that make a rolling upgrade unsafe."""
+    problems = []
+    spec = statefulset["spec"]
+    replicas = spec["replicas"]
+    if replicas < 3 or replicas % 2 == 0:
+        problems.append(
+            f"{replicas} replicas: an odd number of at least 3 keeps a master "
+            "quorum while one node restarts"
+        )
+    if not spec.get("volumeClaimTemplates"):
+        problems.append("No volumeClaimTemplates: data would not survive a restart")
+
+    container = spec["template"]["spec"]["containers"][0]
+    if not container.get("readinessProbe"):
+        problems.append("No readinessProbe: a restarted node cannot be detected")
+    if not container.get("resources", {}).get("limits", {}).get("memory"):
+        problems.append("No memory limit is set")
+
+    env = {item["name"]: item.get("value", "") for item in container.get("env", [])}
+    heap = dict(re.findall(r"-Xm([sx])(\S+)", env.get("ES_JAVA_OPTS", "")))
+    if heap and heap.get("s") != heap.get("x"):
+        problems.append("Heap settings -Xms and -Xmx must match")
+    return problems
 
 
 class KubernetesCluster:
@@ -113,6 +142,8 @@ class RollingUpgrade:
         checks: Callable = run_upgrade_checks,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        snapshot_repository: str | None = None,
+        backup_dir: str | None = None,
     ):
         self.cluster = cluster
         self.target_version = target_version
@@ -122,6 +153,8 @@ class RollingUpgrade:
         self.checks = checks
         self.sleep = sleep
         self.clock = clock
+        self.snapshot_repository = snapshot_repository
+        self.backup_dir = backup_dir
 
     def _call(self, url: str, path: str, method: str = "GET", body=None):
         return self.request(
@@ -140,6 +173,42 @@ class RollingUpgrade:
             if self.clock() >= deadline:
                 raise UpgradeError(f"Timed out waiting for {description}")
             self.sleep(self.poll_interval)
+
+    def _take_snapshot(self, url: str) -> str:
+        """Take a snapshot and wait for it; it is the only way back after upgrading."""
+        repository = self.snapshot_repository
+        if not SNAPSHOT_REPOSITORY_PATTERN.match(repository):
+            raise UpgradeError(f"Invalid snapshot repository name: {repository}")
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%S")
+        name = f"guardian-pre-{self.target_version}-{timestamp}"
+        path = f"/_snapshot/{repository}/{name}"
+        self._call(url, path, method="PUT", body={"include_global_state": True})
+
+        def finished() -> bool:
+            state = self._call(url, path)["snapshots"][0]["state"]
+            if state in {"FAILED", "PARTIAL", "INCOMPATIBLE"}:
+                raise UpgradeError(f"Snapshot {name} ended as {state}")
+            return state == "SUCCESS"
+
+        self._wait_until(finished, f"snapshot {name} to finish")
+        logger.info("Snapshot %s is complete", name)
+        return name
+
+    def _back_up_config(self, url: str, statefulset: dict) -> str:
+        """Save the StatefulSet and cluster settings before anything changes."""
+        directory = Path(self.backup_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        path = directory / f"es-config-backup-{timestamp}.json"
+        backup = {
+            "statefulset": statefulset,
+            "cluster_settings": self._call(
+                url, "/_cluster/settings?flat_settings=true"
+            ),
+        }
+        path.write_text(json.dumps(backup, indent=2) + "\n", encoding="utf-8")
+        return str(path)
 
     def _set_allocation(self, url: str, value: str | None) -> None:
         def apply() -> bool:
@@ -197,7 +266,18 @@ class RollingUpgrade:
                 stable["polls"] = 0
             return stable["polls"] >= SETTLED_POLLS
 
-        self._wait_until(settled, "shards to finish recovering")
+        try:
+            self._wait_until(settled, "shards to finish recovering")
+        except UpgradeError as exc:
+            raise UpgradeError(f"{exc}. {self._allocation_reason(url)}") from exc
+
+    def _allocation_reason(self, url: str) -> str:
+        """Ask Elasticsearch why a shard is unassigned, for the failure report."""
+        try:
+            explain = self._call(url, "/_cluster/allocation/explain")
+            return explain.get("allocate_explanation", "No explanation was given")
+        except ElasticsearchError:
+            return "Elasticsearch could not explain the allocation"
 
     def _upgrade_node(self, pod: str, others: list[str], image: str) -> None:
         with self.cluster.port_forward(self._ready_pod(others)) as url:
@@ -304,6 +384,13 @@ class RollingUpgrade:
         if len(pods) < 2:
             raise UpgradeError("A rolling upgrade needs at least two nodes")
 
+        config_problems = validate_statefulset(statefulset)
+        report["config_problems"] = config_problems
+        if config_problems:
+            report["status"] = "blocked"
+            report["message"] = "Unsafe configuration: " + "; ".join(config_problems)
+            return
+
         with self.cluster.port_forward(self._ready_pod(pods)) as url:
             gate = self.checks(url, self.target_version)
             report["checks"] = gate["checks"]
@@ -318,7 +405,13 @@ class RollingUpgrade:
             if check["status"] == "failed"
             and not (resume and check["name"] in RESUME_IGNORED_CHECKS)
         ]
-        warned = [c["name"] for c in gate["checks"] if c["status"] == "warning"]
+        # Taking a snapshot below resolves the missing snapshot warning.
+        warned = [
+            c["name"]
+            for c in gate["checks"]
+            if c["status"] == "warning"
+            and not (self.snapshot_repository and c["name"] == "snapshot")
+        ]
         if failed:
             report["status"] = "blocked"
             report["message"] = f"Failed checks: {', '.join(failed)}"
@@ -349,6 +442,12 @@ class RollingUpgrade:
             report["status"] = "blocked"
             report["message"] = f"Warnings need --accept-warnings: {', '.join(warned)}"
             return
+
+        with self.cluster.port_forward(self._ready_pod(pods)) as url:
+            if self.backup_dir:
+                report["config_backup"] = self._back_up_config(url, statefulset)
+            if self.snapshot_repository:
+                report["snapshot"] = self._take_snapshot(url)
 
         report["changes_made"] = True
         self.cluster.set_image(container["name"], image)

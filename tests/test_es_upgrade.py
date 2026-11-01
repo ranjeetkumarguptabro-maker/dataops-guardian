@@ -1,8 +1,16 @@
+import json
+import tempfile
 import unittest
 from contextlib import contextmanager
+from pathlib import Path
 
 from dataguardian.elasticsearch import ElasticsearchError
-from dataguardian.es_upgrade import ALLOCATION_KEY, RollingUpgrade, UpgradeError
+from dataguardian.es_upgrade import (
+    ALLOCATION_KEY,
+    RollingUpgrade,
+    UpgradeError,
+    validate_statefulset,
+)
 
 REPOSITORY = "docker.elastic.co/elasticsearch/elasticsearch"
 OLD = "8.17.4"
@@ -31,16 +39,29 @@ class FakeCluster:
         self.fail_rejoin_on = None
         self.pod_waiting = {}
         self.forward_targets = []
+        self.snapshot_state = "SUCCESS"
 
     def statefulset(self):
         return {
             "spec": {
                 "replicas": len(self.versions),
                 "updateStrategy": {"type": self.strategy},
+                "volumeClaimTemplates": [{"metadata": {"name": "data"}}],
                 "template": {
                     "spec": {
                         "containers": [
-                            {"name": "elasticsearch", "image": self.template_image}
+                            {
+                                "name": "elasticsearch",
+                                "image": self.template_image,
+                                "readinessProbe": {"httpGet": {}},
+                                "resources": {"limits": {"memory": "768Mi"}},
+                                "env": [
+                                    {
+                                        "name": "ES_JAVA_OPTS",
+                                        "value": "-Xms256m -Xmx256m",
+                                    }
+                                ],
+                            }
                         ]
                     }
                 },
@@ -78,6 +99,11 @@ class FakeCluster:
         yield f"http://{pod}"
 
     def request(self, _url, path, *_args, method="GET", body=None):
+        if path.startswith("/_snapshot/"):
+            if method == "PUT":
+                self.events.append(f"snapshot:{self.template_image}")
+                return {"accepted": True}
+            return {"snapshots": [{"state": self.snapshot_state}]}
         if path == "/_cluster/settings" and method == "PUT":
             self.allocation = body["persistent"][ALLOCATION_KEY]
             self.events.append(f"allocation:{self.allocation}")
@@ -85,6 +111,8 @@ class FakeCluster:
         if path == "/_flush":
             self.events.append("flush")
             return {}
+        if path == "/_cluster/allocation/explain":
+            return {"allocate_explanation": "disk watermark exceeded"}
         if path == "/_cat/master?format=json&h=node":
             return [{"node": self.master}]
         if path == "/_count":
@@ -129,7 +157,7 @@ class Clock:
 
 
 class RollingUpgradeTests(unittest.TestCase):
-    def upgrade(self, cluster, checks=None, target=NEW):
+    def upgrade(self, cluster, checks=None, target=NEW, **options):
         clock = Clock()
         return RollingUpgrade(
             cluster,
@@ -140,6 +168,7 @@ class RollingUpgradeTests(unittest.TestCase):
             checks=checks or gate(),
             sleep=clock.sleep,
             clock=clock,
+            **options,
         )
 
     def test_dry_run_changes_nothing_and_plans_master_last(self):
@@ -275,6 +304,15 @@ class RollingUpgradeTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "failed")
 
+    def test_stuck_shards_report_the_reason(self):
+        cluster = FakeCluster()
+        cluster.health = "red"
+
+        report = self.upgrade(cluster).run(execute=True)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("disk watermark exceeded", report["message"])
+
     def test_flush_failure_does_not_stop_upgrade(self):
         cluster = FakeCluster()
         original = cluster.request
@@ -391,6 +429,103 @@ class RollingUpgradeTests(unittest.TestCase):
         report = self.upgrade(cluster, gate("disk")).run(execute=True, resume=True)
 
         self.assertEqual(report["status"], "blocked")
+
+    def test_snapshot_is_taken_before_the_image_changes(self):
+        cluster = FakeCluster()
+
+        report = self.upgrade(cluster, snapshot_repository="guardian").run(execute=True)
+
+        self.assertEqual(report["status"], "completed", msg=report["message"])
+        self.assertIn(NEW, report["snapshot"])
+        self.assertTrue(cluster.events[0].endswith(OLD))
+        self.assertTrue(cluster.events[1].startswith("set_image"))
+
+    def test_failed_snapshot_stops_before_any_change(self):
+        cluster = FakeCluster()
+        cluster.snapshot_state = "PARTIAL"
+
+        report = self.upgrade(cluster, snapshot_repository="guardian").run(execute=True)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertIs(report["changes_made"], False)
+        self.assertFalse([e for e in cluster.events if "set_image" in e])
+
+    def test_invalid_snapshot_repository_is_refused(self):
+        cluster = FakeCluster()
+
+        report = self.upgrade(cluster, snapshot_repository="../evil").run(execute=True)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(cluster.events, [])
+
+    def test_planned_snapshot_clears_the_snapshot_warning(self):
+        cluster = FakeCluster()
+        snapshot_warning = {"name": "snapshot", "status": "warning", "message": ""}
+
+        def checks(_url, _target):
+            return {"checks": [snapshot_warning]}
+
+        report = self.upgrade(cluster, checks, snapshot_repository="guardian").run(
+            execute=True
+        )
+
+        self.assertEqual(report["status"], "completed", msg=report["message"])
+
+    def test_config_backup_is_written_before_changes(self):
+        cluster = FakeCluster()
+        with tempfile.TemporaryDirectory() as directory:
+            report = self.upgrade(cluster, backup_dir=directory).run(execute=True)
+            backup = json.loads(Path(report["config_backup"]).read_text())
+
+        self.assertEqual(
+            backup["statefulset"]["spec"]["template"]["spec"]["containers"][0]["name"],
+            "elasticsearch",
+        )
+        self.assertIn("cluster_settings", backup)
+
+    def test_dry_run_writes_no_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = self.upgrade(FakeCluster(), backup_dir=directory).run()
+            self.assertEqual(list(Path(directory).iterdir()), [])
+        self.assertNotIn("config_backup", report)
+
+    def test_unsafe_config_blocks_before_any_change(self):
+        cluster = FakeCluster()
+        original = cluster.statefulset
+
+        def without_probe():
+            statefulset = original()
+            container = statefulset["spec"]["template"]["spec"]["containers"][0]
+            del container["readinessProbe"]
+            return statefulset
+
+        cluster.statefulset = without_probe
+
+        report = self.upgrade(cluster).run(execute=True)
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("readinessProbe", report["message"])
+        self.assertEqual(cluster.events, [])
+
+    def test_validate_statefulset_problems(self):
+        def problems(mutate):
+            statefulset = FakeCluster().statefulset()
+            mutate(statefulset["spec"])
+            return " ".join(validate_statefulset(statefulset))
+
+        def container(spec):
+            return spec["template"]["spec"]["containers"][0]
+
+        self.assertEqual(problems(lambda spec: None), "")
+        self.assertIn("quorum", problems(lambda s: s.update(replicas=4)))
+        self.assertIn("volumeClaim", problems(lambda s: s.pop("volumeClaimTemplates")))
+        self.assertIn("memory", problems(lambda s: container(s).pop("resources")))
+        self.assertIn(
+            "Xms",
+            problems(
+                lambda s: container(s)["env"][0].update(value="-Xms1g -Xmx2g"),
+            ),
+        )
 
     def test_single_node_is_refused(self):
         cluster = FakeCluster(versions={"es-0": OLD})

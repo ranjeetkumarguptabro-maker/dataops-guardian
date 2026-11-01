@@ -89,7 +89,11 @@ def request_json(
 
     headers = {"Accept": "application/json"}
 
-    if username is not None and password is not None:
+    # An API key is the only option on Elastic Cloud Serverless, so it comes first.
+    api_key = os.getenv("ELASTICSEARCH_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"ApiKey {api_key}"
+    elif username is not None and password is not None:
         credentials = base64.b64encode(f"{username}:{password}".encode()).decode(
             "ascii"
         )

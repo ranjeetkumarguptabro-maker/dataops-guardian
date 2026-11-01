@@ -19,6 +19,13 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      # Elasticsearch stops placing replicas above 85% disk use, and three versions
+      # of its image nearly fill a standard runner.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Checkout repository
         uses: actions/checkout@v4
 

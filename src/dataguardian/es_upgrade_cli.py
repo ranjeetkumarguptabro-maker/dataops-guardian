@@ -37,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Continue an interrupted upgrade to the same target version",
     )
     parser.add_argument(
+        "--snapshot-repository",
+        help="Take a snapshot in this registered repository before upgrading",
+    )
+    parser.add_argument(
         "--step-timeout",
         type=float,
         default=300.0,
@@ -59,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         KubernetesCluster(args.namespace, args.statefulset),
         args.target_version,
         step_timeout=args.step_timeout,
+        snapshot_repository=args.snapshot_repository,
+        backup_dir=args.report_dir,
     )
     report = upgrade.run(
         execute=args.execute,

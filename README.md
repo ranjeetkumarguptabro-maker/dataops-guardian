@@ -88,8 +88,8 @@ dataops-guardian-upgrade-check --url http://localhost:9200 --target-version 8.19
 ```
 
 The command prints a JSON report, saves a copy in `reports/` and changes nothing
-on the cluster. For a secured cluster, set `ELASTICSEARCH_USERNAME` and
-`ELASTICSEARCH_PASSWORD`.
+on the cluster. For a secured cluster, set `ELASTICSEARCH_API_KEY`, or
+`ELASTICSEARCH_USERNAME` and `ELASTICSEARCH_PASSWORD`.
 
 | Check | Blocks the upgrade when | Warns when |
 |---|---|---|
