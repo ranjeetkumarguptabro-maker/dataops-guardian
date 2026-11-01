@@ -1,0 +1,75 @@
+name: Kibana Dashboard
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "kibana/**"
+      - "compose.kibana.yaml"
+      - "scripts/kibana_screenshot.py"
+      - "src/dataguardian/kibana.py"
+      - "src/dataguardian/platform_status.py"
+      - ".github/workflows/kibana-dashboard.yml"
+
+jobs:
+  dashboard:
+    name: Import Dashboard and Take Screenshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: |
+          python -m pip install . playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Start Elasticsearch and Kibana
+        run: docker compose -f compose.kibana.yaml up -d
+
+      - name: Wait for Kibana
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:5601/api/status | grep -q '"level":"available"'; then
+              echo "Kibana is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose -f compose.kibana.yaml logs kibana --tail 40
+          exit 1
+
+      # A one-node cluster stays yellow once it holds a replicated index, so these
+      # reports raise alerts and the command exits non-zero. Storage is checked below.
+      - name: Store real status reports
+        run: |
+          for attempt in $(seq 1 12); do
+            dataops-guardian-status --url http://localhost:9200 --store > /dev/null || true
+            sleep 15
+          done
+          curl -s -XPOST http://localhost:9200/guardian-reports/_refresh > /dev/null
+          count=$(curl -s http://localhost:9200/guardian-reports/_count | python -c 'import json,sys;print(json.load(sys.stdin)["count"])')
+          echo "Stored $count reports"
+          [ "$count" -eq 12 ]
+
+      - name: Import the dashboard
+        run: dataops-guardian-kibana-setup --url http://localhost:5601
+
+      - name: Take a screenshot
+        run: python scripts/kibana_screenshot.py http://localhost:5601 kibana-dashboard.png
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kibana-dashboard
+          path: kibana-dashboard.png

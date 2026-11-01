@@ -6,7 +6,10 @@ on:
     branches:
       - main
     paths:
-      - "src/dataguardian/**"
+      - "src/dataguardian/elasticsearch.py"
+      - "src/dataguardian/es_upgrade*.py"
+      - "src/dataguardian/splunk.py"
+      - "src/dataguardian/upgrade_*.py"
       - "k8s/elasticsearch/**"
       - "scripts/e2e_es_upgrade.sh"
       - "scripts/es_probe.py"
