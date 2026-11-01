@@ -53,9 +53,12 @@ run_with_probe() {
     probe_pid=$!
     # The probe's first write creates an index, which is yellow until its replica is
     # placed, and the readiness checks rightly refuse a yellow cluster.
+    # A resumed upgrade skips this, because its cluster has a node down.
     python3 -c 'import time;time.sleep(5)'
-    es "$(ready_pod)" 'localhost:9200/_cluster/health?wait_for_status=green&timeout=60s' \
-        >/dev/null
+    if [ "${1:-}" != "--resume" ]; then
+        es "$(ready_pod)" 'localhost:9200/_cluster/health?wait_for_status=green&timeout=15s' \
+            >/dev/null
+    fi
     output="$(upgrade --target-version "$version" --execute --accept-warnings "$@" ||
         true)"
     echo "$output" >"$OUT/last-report.json"
