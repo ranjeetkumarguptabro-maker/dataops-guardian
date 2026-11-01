@@ -20,6 +20,8 @@ CMD ["python", "-m", "pytest", "-v"]
 
 FROM base AS production
 
+USER 10001
+
 EXPOSE 8080
 
 CMD ["python", "-m", "dataguardian.health_server"]

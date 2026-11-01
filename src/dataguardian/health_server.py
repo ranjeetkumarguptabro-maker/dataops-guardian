@@ -2,6 +2,7 @@
 
 import json
 import logging
+import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from os import getenv
 
@@ -39,6 +40,11 @@ class HealthHandler(BaseHTTPRequestHandler):
         )
 
 
+def _handle_sigterm(_signum, _frame):
+    """Stop serving when Kubernetes terminates the pod."""
+    raise KeyboardInterrupt
+
+
 def main():
     """Start the HTTP health server."""
     host = getenv("HEALTH_HOST", "0.0.0.0")
@@ -48,6 +54,9 @@ def main():
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+
+    # Python running as PID 1 ignores SIGTERM unless a handler is installed.
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     server = ThreadingHTTPServer((host, port), HealthHandler)
     logger.info("Health server listening on %s:%s", host, port)

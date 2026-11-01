@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 
 RELEASE="dataops-guardian"
-CHART="helm/dataops-guardian"
+CHART="${CHART:-helm/dataops-guardian}"
 NAMESPACE="default"
-TIMEOUT="120s"
+TIMEOUT="${TIMEOUT:-120s}"
 
 source "$(dirname "$0")/audit.sh"
 
@@ -16,14 +16,17 @@ if ! helm lint "$CHART" ||
     exit 1
 fi
 
-if ! kubectl get deployment "$RELEASE" -n "$NAMESPACE" >/dev/null; then
-    audit_log "precheck_failed" "deployment=$RELEASE"
+if ! kubectl cluster-info --request-timeout=15s >/dev/null; then
+    audit_log "precheck_failed" "cluster_unreachable"
     exit 1
 fi
 
-PREVIOUS_REVISION="$(
-  helm history "$RELEASE" -n "$NAMESPACE" -o json |
-  python3 -c '
+# A first install has no release history, so there is nothing to roll back to.
+PREVIOUS_REVISION=0
+if helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1; then
+    PREVIOUS_REVISION="$(
+      helm history "$RELEASE" -n "$NAMESPACE" -o json |
+      python3 -c '
 import json, sys
 revisions = json.load(sys.stdin)
 successful = [
@@ -33,11 +36,12 @@ successful = [
 ]
 print(max(successful) if successful else 0)
 '
-)"
+    )"
+fi
 
 audit_log "upgrade_started" "previous_revision=$PREVIOUS_REVISION"
 
-if helm upgrade "$RELEASE" "$CHART" \
+if helm upgrade --install "$RELEASE" "$CHART" \
     --namespace "$NAMESPACE" --wait --timeout "$TIMEOUT"; then
 
     if kubectl rollout status "deployment/$RELEASE" \
