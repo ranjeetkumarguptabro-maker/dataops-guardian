@@ -51,6 +51,11 @@ run_with_probe() {
     kubectl -n "$NS" exec -i es-probe -- python - "$version" "$index" \
         <scripts/es_probe.py >"$OUT/probe-$index.json" &
     probe_pid=$!
+    # The probe's first write creates an index, which is yellow until its replica is
+    # placed, and the readiness checks rightly refuse a yellow cluster.
+    python3 -c 'import time;time.sleep(5)'
+    es "$(ready_pod)" 'localhost:9200/_cluster/health?wait_for_status=green&timeout=60s' \
+        >/dev/null
     output="$(upgrade --target-version "$version" --execute --accept-warnings "$@" ||
         true)"
     echo "$output" >"$OUT/last-report.json"
