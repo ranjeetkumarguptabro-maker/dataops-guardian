@@ -1,0 +1,96 @@
+# One Splunk Enterprise instance for upgrade testing. Create the "splunk-credentials"
+# Secret first. The image is amd64 only, and starting it accepts Splunk's license
+# and general terms.
+apiVersion: v1
+kind: Service
+metadata:
+  name: splunk
+  namespace: splunk
+spec:
+  selector:
+    app: splunk
+  ports:
+    - name: hec
+      port: 8088
+    - name: web
+      port: 8000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: splunk
+  namespace: splunk
+spec:
+  serviceName: splunk
+  replicas: 1
+  # Only dataops-guardian-splunk-upgrade restarts Splunk, after taking a backup.
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: splunk
+  template:
+    metadata:
+      labels:
+        app: splunk
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: splunk
+          image: splunk/splunk:9.4.17
+          env:
+            - name: SPLUNK_START_ARGS
+              value: --accept-license
+            - name: SPLUNK_GENERAL_TERMS
+              value: --accept-sgt-current-at-splunk-com
+            - name: SPLUNK_HEC_SSL
+              value: "false"
+            - name: SPLUNK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: splunk-credentials
+                  key: password
+            - name: SPLUNK_HEC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: splunk-credentials
+                  key: hec-token
+          ports:
+            - name: web
+              containerPort: 8000
+            - name: hec
+              containerPort: 8088
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 3Gi
+          # The collector answers only once Splunk has fully started.
+          readinessProbe:
+            httpGet:
+              path: /services/collector/health
+              port: hec
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: etc
+              mountPath: /opt/splunk/etc
+            - name: var
+              mountPath: /opt/splunk/var
+  volumeClaimTemplates:
+    - metadata:
+        name: etc
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+    - metadata:
+        name: var
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

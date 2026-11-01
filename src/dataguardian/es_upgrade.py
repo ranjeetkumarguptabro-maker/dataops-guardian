@@ -91,6 +91,24 @@ class KubernetesCluster:
     def delete_pod(self, pod: str) -> None:
         self._kubectl("delete", "pod", pod, "--wait=false")
 
+    def exec_in_pod(self, pod: str, *command: str) -> str:
+        return self._kubectl("exec", pod, "--", *command, timeout=120.0)
+
+    def exec_to_file(self, pod: str, output, *command: str) -> None:
+        """Stream a command's output into an open binary file."""
+        try:
+            result = subprocess.run(
+                ["kubectl", "-n", self.namespace, "exec", pod, "--", *command],
+                stdout=output,
+                stderr=subprocess.PIPE,
+                timeout=600,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise UpgradeError("kubectl exec did not complete") from exc
+        if result.returncode != 0:
+            raise UpgradeError(f"kubectl exec failed: {result.stderr.decode().strip()}")
+
     def pod(self, pod: str) -> dict | None:
         """Return a pod, or None while it does not exist."""
         output = self._kubectl("get", "pod", pod, "--ignore-not-found", "-o", "json")

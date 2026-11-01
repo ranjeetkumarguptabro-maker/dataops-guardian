@@ -15,6 +15,7 @@ FROM base AS test
 RUN pip install --no-cache-dir pytest pytest-cov
 
 COPY tests/ ./tests/
+COPY kibana/ ./kibana/
 
 CMD ["python", "-m", "pytest", "-v"]
 
