@@ -17,7 +17,10 @@ rolls back automatically when an upgrade fails.
 - **CI** that lints, tests, builds images and runs Elasticsearch integration
   tests and a Helm install on a kind cluster
 
-Planned: automated Elasticsearch upgrade checks, then Splunk integration.
+- **Elasticsearch upgrade readiness checks** that decide whether a cluster is
+  safe to upgrade, using read-only API calls
+
+Planned: running Elasticsearch upgrades on Kubernetes, then Splunk integration.
 
 ## Run the tests
 
@@ -72,6 +75,35 @@ CHART=/path/to/broken-chart TIMEOUT=40s ./scripts/deploy.sh
 The script exits with status 1 and restores the previous revision. Old pods keep
 serving throughout, because the rollout uses `maxUnavailable: 0` and new pods
 never become ready. Each step is recorded in `logs/maintenance.log`.
+
+## Check Elasticsearch upgrade readiness
+
+```bash
+dataops-guardian-upgrade-check --url http://localhost:9200 --target-version 8.19.0
+```
+
+The command prints a JSON report, saves a copy in `reports/` and changes nothing
+on the cluster. For a secured cluster, set `ELASTICSEARCH_USERNAME` and
+`ELASTICSEARCH_PASSWORD`.
+
+| Check | Blocks the upgrade when | Warns when |
+|---|---|---|
+| `upgrade_path` | The target is a downgrade or skips a required version | |
+| `cluster_health` | Red, or yellow with several nodes | Yellow on a single node |
+| `shards` | Shards are relocating or initializing | |
+| `shard_allocation` | Allocation is not set to `all` | |
+| `nodes` | Versions are mixed, or heap use is 90% or more | Heap use is 75% or more, or there is only one node |
+| `disk` | Disk use is 85% or more | Disk use is 75% or more |
+| `deprecations` | Any critical deprecation exists | Any deprecation warning exists |
+| `snapshot` | | No successful snapshot in the last 24 hours |
+
+The report status is `ready`, `ready_with_warnings` or `blocked`. The command
+exits with status 1 only when blocked, so it can gate a CI job or deployment
+script. A check that cannot get a valid answer counts as failed, never as passed.
+
+Upgrade paths follow
+[Elastic's documentation](https://www.elastic.co/docs/deploy-manage/upgrade/prepare-to-upgrade):
+9.1 and later require 8.19, 9.0 requires 8.18 or 8.19, and 8.x requires 7.17.
 
 ## Project layout
 

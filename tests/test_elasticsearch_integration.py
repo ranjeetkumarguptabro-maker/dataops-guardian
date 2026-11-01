@@ -4,6 +4,7 @@ import os
 import unittest
 
 from dataguardian.elasticsearch import get_elasticsearch_version
+from dataguardian.upgrade_checks import run_upgrade_checks
 
 
 @unittest.skipUnless(
@@ -22,3 +23,12 @@ class TestElasticsearchIntegration(unittest.TestCase):
 
         if expected_version:
             self.assertEqual(result["version"], expected_version)
+
+    def test_upgrade_checks_run_against_live_cluster(self):
+        url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+        major, minor, _ = get_elasticsearch_version(url)["version"].split(".")
+
+        report = run_upgrade_checks(url, f"{major}.{int(minor) + 1}.0")
+
+        self.assertNotEqual(report["status"], "blocked", msg=report["checks"])
+        self.assertIs(report["changes_made"], False)
