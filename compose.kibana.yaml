@@ -14,6 +14,10 @@ services:
     image: docker.elastic.co/kibana/kibana:9.5.5
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - TELEMETRY_OPTIN=false
+      - TELEMETRY_ALLOWCHANGINGOPTINSTATUS=false
+      - XPACK_SECURITY_SHOWINSECURECLUSTERWARNING=false
+      - SECURITY_SHOWINSECURECLUSTERWARNING=false
     ports:
       - "127.0.0.1:5601:5601"
     depends_on:

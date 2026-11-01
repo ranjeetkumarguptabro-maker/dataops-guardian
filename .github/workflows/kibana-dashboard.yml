@@ -48,10 +48,10 @@ jobs:
           docker compose -f compose.kibana.yaml logs kibana --tail 40
           exit 1
 
-      # A one-node cluster stays yellow once it holds a replicated index, so these
-      # reports raise alerts and the command exits non-zero. Storage is checked below.
+      # A single node cannot host replicas, so the index needs none to stay green.
       - name: Store real status reports
         run: |
+          curl -fsS -XPUT http://localhost:9200/guardian-reports -H 'content-type: application/json' -d '{"settings":{"number_of_replicas":0}}'
           for attempt in $(seq 1 12); do
             dataops-guardian-status --url http://localhost:9200 --store > /dev/null || true
             sleep 15
