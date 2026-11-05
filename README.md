@@ -6,7 +6,7 @@ rolls back automatically when an upgrade fails.
 
 ## What works today
 
-- **Health checks and preflight validation** with retries and error handling
+- **Health checks and preflight validation** with retries and  error handling
 - **Elasticsearch version discovery** with a live integration test
 - **Maintenance planning** as a dry run with an approval gate; it does not
   execute restarts or upgrades
