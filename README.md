@@ -1,7 +1,7 @@
 # DataOps Guardian
 
 Python automation for health checks and safe maintenance of data platforms,
-starting with Elasticsearch. It runs on Kubernetes, deploys through Helm, and
+starting with Elasticsearch. It runs on  Kubernetes, deploys through Helm, and
 rolls back automatically when an upgrade fails.
 
 ## What works today
