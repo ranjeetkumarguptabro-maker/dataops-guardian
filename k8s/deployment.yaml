@@ -31,10 +31,15 @@ spec:
                 configMapKeyRef:
                   name: dataops-guardian-config
                   key: SERVICE_NAME
+            - name: ELASTICSEARCH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: dataops-guardian-config
+                  key: ELASTICSEARCH_URL
 
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 8080
             initialDelaySeconds: 2
             periodSeconds: 5

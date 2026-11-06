@@ -5,3 +5,4 @@ metadata:
 data:
   PORT: {{ .Values.config.port | quote }}
   SERVICE_NAME: {{ .Values.config.serviceName | quote }}
+  ELASTICSEARCH_URL: {{ .Values.config.elasticsearchUrl | quote }}

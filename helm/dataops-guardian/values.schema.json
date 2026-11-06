@@ -19,78 +19,163 @@
     "image": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "tag", "pullPolicy"],
+      "required": [
+        "repository",
+        "tag",
+        "pullPolicy"
+      ],
       "properties": {
-        "repository": {"type": "string", "minLength": 1},
-        "tag": {"type": "string", "minLength": 1},
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         }
       }
     },
     "service": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "port", "targetPort"],
+      "required": [
+        "type",
+        "port",
+        "targetPort"
+      ],
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer"
+          ]
         },
-        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-        "targetPort": {"type": "integer", "minimum": 1, "maximum": 65535}
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "targetPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
       }
     },
     "config": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["port", "serviceName"],
+      "required": [
+        "port",
+        "serviceName"
+      ],
       "properties": {
-        "port": {"type": "string", "pattern": "^[0-9]+$"},
-        "serviceName": {"type": "string", "minLength": 1}
+        "port": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "serviceName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "elasticsearchUrl": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "resources": {
       "type": "object",
-      "required": ["requests", "limits"],
+      "required": [
+        "requests",
+        "limits"
+      ],
       "properties": {
         "requests": {
           "type": "object",
-          "required": ["cpu", "memory"],
+          "required": [
+            "cpu",
+            "memory"
+          ],
           "properties": {
-            "cpu": {"type": "string", "minLength": 1},
-            "memory": {"type": "string", "minLength": 1}
+            "cpu": {
+              "type": "string",
+              "minLength": 1
+            },
+            "memory": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "limits": {
           "type": "object",
-          "required": ["cpu", "memory"],
+          "required": [
+            "cpu",
+            "memory"
+          ],
           "properties": {
-            "cpu": {"type": "string", "minLength": 1},
-            "memory": {"type": "string", "minLength": 1}
+            "cpu": {
+              "type": "string",
+              "minLength": 1
+            },
+            "memory": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }
     },
     "probes": {
       "type": "object",
-      "required": ["readiness", "liveness"],
+      "required": [
+        "readiness",
+        "liveness"
+      ],
       "properties": {
         "readiness": {
           "type": "object",
-          "required": ["initialDelaySeconds", "periodSeconds"],
+          "required": [
+            "initialDelaySeconds",
+            "periodSeconds"
+          ],
           "properties": {
-            "initialDelaySeconds": {"type": "integer", "minimum": 0},
-            "periodSeconds": {"type": "integer", "minimum": 1}
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         "liveness": {
           "type": "object",
-          "required": ["initialDelaySeconds", "periodSeconds"],
+          "required": [
+            "initialDelaySeconds",
+            "periodSeconds"
+          ],
           "properties": {
-            "initialDelaySeconds": {"type": "integer", "minimum": 0},
-            "periodSeconds": {"type": "integer", "minimum": 1}
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         }
       }

@@ -45,11 +45,16 @@ spec:
                 configMapKeyRef:
                   name: dataops-guardian-config
                   key: SERVICE_NAME
+            - name: ELASTICSEARCH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: dataops-guardian-config
+                  key: ELASTICSEARCH_URL
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: {{ .Values.service.targetPort }}
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}

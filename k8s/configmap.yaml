@@ -5,3 +5,4 @@ metadata:
 data:
   PORT: "8080"
   SERVICE_NAME: "dataops-guardian"
+  ELASTICSEARCH_URL: "http://elasticsearch.elasticsearch.svc.cluster.local:9200"

@@ -10,6 +10,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
+from dataguardian.elasticsearch import ElasticsearchError
 from dataguardian.health_server import HealthHandler
 
 
@@ -22,6 +23,16 @@ class HealthServerTests(unittest.TestCase):
         self.addCleanup(thread.join, 5)
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
+
+    def _get_json(self, path):
+        """Return the HTTP status and JSON body, including error responses."""
+        try:
+            response = urlopen(f"{self.base_url}{path}", timeout=5)
+        except HTTPError as error:
+            response = error
+
+        with response:
+            return response.status, json.load(response)
 
     def test_health_returns_healthy_json(self):
         with patch.dict("os.environ", {"SERVICE_NAME": "guardian-test"}):
@@ -38,6 +49,97 @@ class HealthServerTests(unittest.TestCase):
 
         self.addCleanup(caught.exception.close)
         self.assertEqual(caught.exception.code, 404)
+
+
+    def test_ready_returns_200_when_elasticsearch_is_green(self):
+        with (
+            patch.dict(os.environ, {"ELASTICSEARCH_URL": "http://elasticsearch:9200"}),
+            patch(
+                "dataguardian.health_server.fetch_json",
+                return_value={"status": "green"},
+            ),
+        ):
+            status, body = self._get_json("/ready")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["status"], "ready")
+        self.assertEqual(body["dependencies"]["elasticsearch"]["status"], "green")
+
+    def test_ready_returns_200_with_warning_when_elasticsearch_is_yellow(self):
+        with (
+            patch.dict(os.environ, {"ELASTICSEARCH_URL": "http://elasticsearch:9200"}),
+            patch(
+                "dataguardian.health_server.fetch_json",
+                return_value={"status": "yellow"},
+            ),
+        ):
+            status, body = self._get_json("/ready")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["status"], "ready")
+        self.assertEqual(
+            body["dependencies"]["elasticsearch"]["warning"],
+            "Cluster has unassigned replicas",
+        )
+
+    def test_ready_returns_503_when_elasticsearch_is_red(self):
+        with (
+            patch.dict(os.environ, {"ELASTICSEARCH_URL": "http://elasticsearch:9200"}),
+            patch(
+                "dataguardian.health_server.fetch_json",
+                return_value={"status": "red"},
+            ),
+        ):
+            status, body = self._get_json("/ready")
+
+        self.assertEqual(status, 503)
+        self.assertEqual(body["status"], "not_ready")
+        self.assertEqual(body["dependencies"]["elasticsearch"]["status"], "red")
+
+    def test_ready_returns_503_when_elasticsearch_is_unavailable(self):
+        with (
+            patch.dict(os.environ, {"ELASTICSEARCH_URL": "http://elasticsearch:9200"}),
+            patch(
+                "dataguardian.health_server.fetch_json",
+                side_effect=ElasticsearchError("connection failed"),
+            ),
+        ):
+            status, body = self._get_json("/ready")
+
+        self.assertEqual(status, 503)
+        self.assertEqual(body["status"], "not_ready")
+        self.assertEqual(
+            body["dependencies"]["elasticsearch"]["error_type"],
+            "dependency_error",
+        )
+
+    def test_ready_returns_503_for_invalid_elasticsearch_response(self):
+        with (
+            patch.dict(os.environ, {"ELASTICSEARCH_URL": "http://elasticsearch:9200"}),
+            patch(
+                "dataguardian.health_server.fetch_json",
+                return_value={"unexpected": "response"},
+            ),
+        ):
+            status, body = self._get_json("/ready")
+
+        self.assertEqual(status, 503)
+        self.assertEqual(body["status"], "not_ready")
+        self.assertEqual(
+            body["dependencies"]["elasticsearch"]["error_type"],
+            "invalid_response",
+        )
+
+    def test_ready_returns_503_when_elasticsearch_is_not_configured(self):
+        with patch.dict(os.environ, {"ELASTICSEARCH_URL": ""}):
+            status, body = self._get_json("/ready")
+
+        self.assertEqual(status, 503)
+        self.assertEqual(body["status"], "not_ready")
+        self.assertEqual(
+            body["dependencies"]["elasticsearch"]["status"],
+            "not_configured",
+        )
 
 
 class HealthServerShutdownTests(unittest.TestCase):
