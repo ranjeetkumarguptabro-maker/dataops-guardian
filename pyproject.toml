@@ -16,7 +16,6 @@ dataops-guardian-upgrade-check = "dataguardian.upgrade_cli:main"
 dataops-guardian-es-upgrade = "dataguardian.es_upgrade_cli:main"
 dataops-guardian-status = "dataguardian.platform_status:main"
 dataops-guardian-kibana-setup = "dataguardian.kibana:main"
-dataops-guardian-splunk-upgrade = "dataguardian.splunk_upgrade:main"
 
 [project.optional-dependencies]
 dev = [

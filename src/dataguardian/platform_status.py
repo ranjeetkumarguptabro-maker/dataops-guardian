@@ -4,10 +4,8 @@ import argparse
 import json
 import subprocess
 from datetime import datetime, timezone
-from os import getenv
 
 from dataguardian.elasticsearch import ElasticsearchError, fetch_json, request_json
-from dataguardian.splunk import check_splunk_health, publish_report
 from dataguardian.upgrade_checks import save_report
 
 CPU_WARNING_PERCENT = 90
@@ -95,9 +93,7 @@ def collect_pods(namespace: str) -> tuple[list[dict], list[str]]:
     return summarize_pods(json.loads(result.stdout))
 
 
-def collect_status(
-    url: str, namespace: str | None = None, splunk_url: str | None = None
-) -> dict:
+def collect_status(url: str, namespace: str | None = None) -> dict:
     """Collect everything configured; an unreachable component becomes an alert."""
     report = {
         "component": "dataguardian-platform-status",
@@ -116,12 +112,6 @@ def collect_status(
             report["alerts"].extend(alerts)
         except (OSError, subprocess.SubprocessError, ValueError, KeyError):
             report["alerts"].append("Kubernetes pod status unavailable")
-
-    if splunk_url:
-        splunk = check_splunk_health(splunk_url)
-        report["splunk"] = splunk
-        if splunk["status"] != "passed":
-            report["alerts"].append(f"Splunk: {splunk['message']}")
 
     report["status"] = "alert" if report["alerts"] else "healthy"
     return report
@@ -157,11 +147,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--report-dir", default="reports")
     args = parser.parse_args(argv)
+    report = collect_status(args.url, args.namespace)
 
-    report = collect_status(args.url, args.namespace, getenv("SPLUNK_HEC_URL"))
     if args.store:
         report["stored"] = index_report(args.url, report)
-    report["splunk_delivery"] = publish_report(report)
     report["report_path"] = save_report(report, args.report_dir, "status")
 
     print(json.dumps(report, indent=2))

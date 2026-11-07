@@ -22,10 +22,8 @@ rolls back automatically when an upgrade fails.
 
 - **Rolling Elasticsearch upgrades on Kubernetes**, one node at a time, with
   resume after failure
-- **Splunk reporting** that sends every check and upgrade report to the HTTP
-  Event Collector
 
-Planned: Kibana dashboards, and upgrade automation for Splunk.
+Planned: Kibana dashboards.
 
 ## Run the tests
 
@@ -151,18 +149,6 @@ probe inside the cluster reads and writes every second, and it covers a blocked
 upgrade path, a dry run and a bad image followed by a resume. The test fails if
 any acknowledged write or seeded document is lost.
 
-## Send reports to Splunk
-
-```bash
-export SPLUNK_HEC_URL=https://splunk.example:8088
-export SPLUNK_HEC_TOKEN=your-token
-```
-
-Both commands then send their reports with the sourcetype `dataguardian:report`.
-A Splunk outage is recorded in the report and never changes the upgrade's outcome.
-`compose.splunk.yaml` starts a local Splunk for testing; starting it accepts
-Splunk's license and terms.
-
 ## Project layout
 
 | Path | Purpose |
@@ -173,4 +159,4 @@ Splunk's license and terms.
 | `scripts/` | Deployment and audit logging |
 | `k8s/elasticsearch/` | Three-node Elasticsearch test cluster |
 | `.github/workflows/tests.yml` | CI pipeline |
-| `.github/workflows/platform-e2e.yml` | Live upgrade and Splunk tests |
+| `.github/workflows/platform-e2e.yml` | Live Elasticsearch upgrade tests |

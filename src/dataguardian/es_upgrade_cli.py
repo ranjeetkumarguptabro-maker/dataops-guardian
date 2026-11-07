@@ -5,7 +5,6 @@ import json
 import logging
 
 from dataguardian.es_upgrade import KubernetesCluster, RollingUpgrade
-from dataguardian.splunk import publish_report
 from dataguardian.upgrade_checks import save_report
 
 
@@ -71,7 +70,6 @@ def main(argv: list[str] | None = None) -> int:
         accept_warnings=args.accept_warnings,
         resume=args.resume,
     )
-    report["splunk"] = publish_report(report)
     report["report_path"] = save_report(report, args.report_dir, "es-upgrade")
 
     print(json.dumps(report, indent=2))
