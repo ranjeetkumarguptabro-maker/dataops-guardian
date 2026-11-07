@@ -1,12 +1,12 @@
 # DataOps Guardian
 
 Python automation for health checks and safe maintenance of data platforms,
-starting with Elasticsearch. It runs on Kubernetes, deploys through Helm, and
+starting with Elasticsearch. It runs on  Kubernetes , deploys through Helm, and
 rolls back automatically when an upgrade fails.
 
 ## What works today
 
-- **Health checks and preflight validation** with retries and error handling
+- **Health checks and preflight validation** with retries and  error handling
 - **Elasticsearch version discovery** with a live integration test
 - **Maintenance planning** as a dry run with an approval gate; it does not
   execute restarts or upgrades
@@ -15,7 +15,7 @@ rolls back automatically when an upgrade fails.
 - **Audited deployments** through `scripts/deploy.sh`, which validates the chart,
   installs or upgrades, rolls back on failure and logs each step
 - **CI** that lints, tests, builds images and runs Elasticsearch integration
-  tests and a Helm install on a kind cluster
+  tests and a Helm install on  a kind cluster
 
 - **Elasticsearch upgrade readiness checks** that decide whether a cluster is
   safe to upgrade, using read-only API calls
