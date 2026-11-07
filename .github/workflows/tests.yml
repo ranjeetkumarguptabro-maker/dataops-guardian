@@ -186,3 +186,120 @@ jobs:
           done
           kubectl describe pods -l app=dataops-guardian
           exit 1
+
+  deploy-production:
+    name: Deploy to AWS EC2
+    runs-on: [self-hosted, Linux, X64]
+    needs: [test, elasticsearch-integration, docker, kubernetes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy and verify production
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE="dataops-guardian:${SHORT_SHA}"
+          CANDIDATE="dataops-guardian-candidate-${SHORT_SHA}"
+          ROLLBACK="dataops-guardian-rollback-${SHORT_SHA}"
+          FAILED="dataops-guardian-failed-${SHORT_SHA}"
+          NETWORK="dataops-guardian_default"
+
+          echo "Building production image: ${IMAGE}"
+          docker build --target production -t "${IMAGE}" .
+
+          echo "Starting candidate container..."
+          docker rm -f "${CANDIDATE}" 2>/dev/null || true
+
+          docker run -d \
+            --name "${CANDIDATE}" \
+            --network "${NETWORK}" \
+            -e ELASTICSEARCH_URL=http://elasticsearch:9200 \
+            "${IMAGE}"
+
+          echo "Checking candidate health..."
+          READY=0
+
+          for attempt in $(seq 1 30); do
+            if docker exec "${CANDIDATE}" python -c \
+              'import urllib.request; assert all(urllib.request.urlopen("http://127.0.0.1:8080/" + p, timeout=3).status == 200 for p in ("health", "ready"))'; then
+              READY=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "${READY}" -ne 1 ]; then
+            echo "Candidate failed health checks."
+            docker logs "${CANDIDATE}" || true
+            docker rm -f "${CANDIDATE}" || true
+            exit 1
+          fi
+
+          docker rm -f "${CANDIDATE}"
+
+          echo "Candidate passed. Switching production..."
+
+          HAD_OLD=0
+
+          if docker inspect dataops-guardian >/dev/null 2>&1; then
+            docker stop dataops-guardian
+            docker rename dataops-guardian "${ROLLBACK}"
+            HAD_OLD=1
+          fi
+
+          if ! docker run -d \
+            --name dataops-guardian \
+            --network "${NETWORK}" \
+            -p 127.0.0.1:8080:8080 \
+            -e ELASTICSEARCH_URL=http://elasticsearch:9200 \
+            --restart unless-stopped \
+            "${IMAGE}"; then
+
+            echo "New container failed to start."
+
+            if [ "${HAD_OLD}" -eq 1 ]; then
+              docker rename "${ROLLBACK}" dataops-guardian
+              docker start dataops-guardian
+            fi
+
+            exit 1
+          fi
+
+          echo "Verifying production endpoints..."
+          HEALTHY=0
+
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null &&
+               curl -fsS http://127.0.0.1:8080/ready >/dev/null; then
+              HEALTHY=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "${HEALTHY}" -ne 1 ]; then
+            echo "Production health check failed. Rolling back..."
+            docker logs dataops-guardian || true
+            docker stop dataops-guardian || true
+            docker rename dataops-guardian "${FAILED}" || true
+
+            if [ "${HAD_OLD}" -eq 1 ]; then
+              docker rename "${ROLLBACK}" dataops-guardian
+              docker start dataops-guardian
+            fi
+
+            exit 1
+          fi
+
+          echo "Deployment successful: ${IMAGE}"
+          curl -fsS http://127.0.0.1:8080/health
+          curl -fsS http://127.0.0.1:8080/ready
