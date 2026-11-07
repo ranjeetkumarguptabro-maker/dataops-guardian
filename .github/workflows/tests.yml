@@ -246,6 +246,17 @@ jobs:
 
           docker rm -f "${CANDIDATE}"
 
+          echo "Applying Elasticsearch index template..."
+          curl --fail --silent --show-error \
+            -X PUT "http://127.0.0.1:9200/_index_template/guardian-reports-template" \
+            -H "Content-Type: application/json" \
+            --data-binary @elasticsearch/templates/guardian-reports.json
+
+          echo "Verifying Elasticsearch index template..."
+          curl --fail --silent --show-error \
+            "http://127.0.0.1:9200/_index_template/guardian-reports-template" \
+            | python -c 'import json,sys; d=json.load(sys.stdin); t=d["index_templates"][0]["index_template"]["template"]["settings"]["index"]; assert t["number_of_replicas"] == "0"; print("Index template verified: replicas=0")'
+
           echo "Candidate passed. Switching production..."
 
           HAD_OLD=0
