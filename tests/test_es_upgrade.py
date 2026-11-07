@@ -33,6 +33,7 @@ class FakeCluster:
         self.master = "es-0"
         self.documents = 100
         self.allocation = None
+        self.transient_allocation = None
         self.health = "green"
         self.events = []
         self.fail_image_on = None
@@ -104,33 +105,59 @@ class FakeCluster:
                 self.events.append(f"snapshot:{self.template_image}")
                 return {"accepted": True}
             return {"snapshots": [{"state": self.snapshot_state}]}
+
         if path == "/_cluster/settings" and method == "PUT":
-            self.allocation = body["persistent"][ALLOCATION_KEY]
-            self.events.append(f"allocation:{self.allocation}")
+            persistent = body.get("persistent", {})
+            transient = body.get("transient", {})
+
+            if ALLOCATION_KEY in persistent:
+                self.allocation = persistent[ALLOCATION_KEY]
+
+            if ALLOCATION_KEY in transient:
+                self.transient_allocation = transient[ALLOCATION_KEY]
+
+            self.events.append(
+                f"allocation:{self.allocation}:{self.transient_allocation}"
+            )
             return {"acknowledged": True}
+
         if path == "/_flush":
             self.events.append("flush")
             return {}
+
         if path == "/_cluster/allocation/explain":
             return {"allocate_explanation": "disk watermark exceeded"}
+
         if path == "/_cat/master?format=json&h=node":
             return [{"node": self.master}]
+
         if path == "/_count":
             return {"count": self.documents}
+
         if path == "/_cat/nodes?format=json&h=name,version":
             return [
                 {"name": pod, "version": version}
                 for pod, version in self.versions.items()
             ]
+
         if path == "/_cluster/health":
             mixed = len(set(self.versions.values())) > 1
             status = self.health
             if status == "green" and mixed:
                 status = "yellow"
             return {"status": status, "relocating_shards": 0, "initializing_shards": 0}
+
         if path == "/_cluster/settings?flat_settings=true":
-            persistent = {ALLOCATION_KEY: self.allocation} if self.allocation else {}
-            return {"persistent": persistent, "transient": {}}
+            persistent = (
+                {ALLOCATION_KEY: self.allocation} if self.allocation else {}
+            )
+            transient = (
+                {ALLOCATION_KEY: self.transient_allocation}
+                if self.transient_allocation
+                else {}
+            )
+            return {"persistent": persistent, "transient": transient}
+
         raise AssertionError(f"Unexpected request: {method} {path}")
 
 
@@ -190,6 +217,7 @@ class RollingUpgradeTests(unittest.TestCase):
         self.assertEqual(report["upgraded_nodes"], ["es-1", "es-2", "es-0"])
         self.assertEqual(set(cluster.versions.values()), {NEW})
         self.assertIsNone(cluster.allocation)
+        self.assertIsNone(cluster.transient_allocation)
 
         deletions = [e for e in cluster.events if e.startswith("delete")]
         self.assertEqual(
@@ -246,6 +274,7 @@ class RollingUpgradeTests(unittest.TestCase):
         self.assertEqual(report["upgraded_nodes"], ["es-1"])
         self.assertEqual(cluster.versions["es-0"], OLD)
         self.assertIsNone(cluster.allocation)
+        self.assertIsNone(cluster.transient_allocation)
 
     def test_node_that_never_rejoins_times_out(self):
         cluster = FakeCluster()

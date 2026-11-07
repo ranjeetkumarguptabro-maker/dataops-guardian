@@ -39,24 +39,30 @@ def validate_statefulset(statefulset: dict) -> list[str]:
     problems = []
     spec = statefulset["spec"]
     replicas = spec["replicas"]
+
     if replicas < 3 or replicas % 2 == 0:
         problems.append(
             f"{replicas} replicas: an odd number of at least 3 keeps a master "
             "quorum while one node restarts"
         )
+
     if not spec.get("volumeClaimTemplates"):
         problems.append("No volumeClaimTemplates: data would not survive a restart")
 
     container = spec["template"]["spec"]["containers"][0]
+
     if not container.get("readinessProbe"):
         problems.append("No readinessProbe: a restarted node cannot be detected")
+
     if not container.get("resources", {}).get("limits", {}).get("memory"):
         problems.append("No memory limit is set")
 
     env = {item["name"]: item.get("value", "") for item in container.get("env", [])}
     heap = dict(re.findall(r"-Xm([sx])(\S+)", env.get("ES_JAVA_OPTS", "")))
+
     if heap and heap.get("s") != heap.get("x"):
         problems.append("Heap settings -Xms and -Xmx must match")
+
     return problems
 
 
@@ -69,14 +75,21 @@ class KubernetesCluster:
 
     def _kubectl(self, *args: str, timeout: float = 30.0) -> str:
         command = ["kubectl", "-n", self.namespace, *args]
+
         try:
             result = subprocess.run(
-                command, capture_output=True, text=True, timeout=timeout, check=False
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise UpgradeError(f"kubectl {args[0]} did not complete") from exc
+
         if result.returncode != 0:
             raise UpgradeError(f"kubectl {args[0]} failed: {result.stderr.strip()}")
+
         return result.stdout
 
     def statefulset(self) -> dict:
@@ -85,7 +98,10 @@ class KubernetesCluster:
 
     def set_image(self, container: str, image: str) -> None:
         self._kubectl(
-            "set", "image", f"statefulset/{self.name}", f"{container}={image}"
+            "set",
+            "image",
+            f"statefulset/{self.name}",
+            f"{container}={image}",
         )
 
     def delete_pod(self, pod: str) -> None:
@@ -106,12 +122,20 @@ class KubernetesCluster:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise UpgradeError("kubectl exec did not complete") from exc
+
         if result.returncode != 0:
             raise UpgradeError(f"kubectl exec failed: {result.stderr.decode().strip()}")
 
     def pod(self, pod: str) -> dict | None:
         """Return a pod, or None while it does not exist."""
-        output = self._kubectl("get", "pod", pod, "--ignore-not-found", "-o", "json")
+        output = self._kubectl(
+            "get",
+            "pod",
+            pod,
+            "--ignore-not-found",
+            "-o",
+            "json",
+        )
         return json.loads(output) if output.strip() else None
 
     @contextmanager
@@ -135,12 +159,16 @@ class KubernetesCluster:
             stderr=subprocess.DEVNULL,
             text=True,
         )
+
         try:
             line = process.stdout.readline()
+
             if "127.0.0.1:" not in line:
                 raise UpgradeError(f"Could not port-forward to {pod}")
+
             port = line.split("127.0.0.1:")[1].split()[0]
             yield f"http://127.0.0.1:{port}"
+
         finally:
             process.terminate()
             process.wait(timeout=10)
@@ -176,69 +204,104 @@ class RollingUpgrade:
 
     def _call(self, url: str, path: str, method: str = "GET", body=None):
         return self.request(
-            url, path, REQUEST_TIMEOUT, None, None, method=method, body=body
+            url,
+            path,
+            REQUEST_TIMEOUT,
+            None,
+            None,
+            method=method,
+            body=body,
         )
 
     def _wait_until(self, condition: Callable[[], bool], description: str) -> None:
         """Poll a condition; requests fail normally while a node restarts."""
         deadline = self.clock() + self.step_timeout
+
         while True:
             try:
                 if condition():
                     return
             except ElasticsearchError as exc:
                 logger.debug("Still waiting for %s: %s", description, exc)
+
             if self.clock() >= deadline:
                 raise UpgradeError(f"Timed out waiting for {description}")
+
             self.sleep(self.poll_interval)
 
     def _take_snapshot(self, url: str) -> str:
         """Take a snapshot and wait for it; it is the only way back after upgrading."""
         repository = self.snapshot_repository
+
         if not SNAPSHOT_REPOSITORY_PATTERN.match(repository):
             raise UpgradeError(f"Invalid snapshot repository name: {repository}")
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%S")
         name = f"guardian-pre-{self.target_version}-{timestamp}"
         path = f"/_snapshot/{repository}/{name}"
-        self._call(url, path, method="PUT", body={"include_global_state": True})
+
+        self._call(
+            url,
+            path,
+            method="PUT",
+            body={"include_global_state": True},
+        )
 
         def finished() -> bool:
             state = self._call(url, path)["snapshots"][0]["state"]
+
             if state in {"FAILED", "PARTIAL", "INCOMPATIBLE"}:
                 raise UpgradeError(f"Snapshot {name} ended as {state}")
+
             return state == "SUCCESS"
 
         self._wait_until(finished, f"snapshot {name} to finish")
         logger.info("Snapshot %s is complete", name)
+
         return name
 
     def _back_up_config(self, url: str, statefulset: dict) -> str:
         """Save the StatefulSet and cluster settings before anything changes."""
         directory = Path(self.backup_dir)
         directory.mkdir(parents=True, exist_ok=True)
+
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         path = directory / f"es-config-backup-{timestamp}.json"
+
         backup = {
             "statefulset": statefulset,
             "cluster_settings": self._call(
-                url, "/_cluster/settings?flat_settings=true"
+                url,
+                "/_cluster/settings?flat_settings=true",
             ),
         }
-        path.write_text(json.dumps(backup, indent=2) + "\n", encoding="utf-8")
+
+        path.write_text(
+            json.dumps(backup, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
         return str(path)
 
     def _set_allocation(self, url: str, value: str | None) -> None:
+        """Set allocation in both scopes so transient settings cannot override it."""
+
         def apply() -> bool:
             self._call(
                 url,
                 "/_cluster/settings",
                 method="PUT",
-                body={"persistent": {ALLOCATION_KEY: value}},
+                body={
+                    "persistent": {ALLOCATION_KEY: value},
+                    "transient": {ALLOCATION_KEY: value},
+                },
             )
             return True
 
-        self._wait_until(apply, f"shard allocation to be set to {value or 'default'}")
+        self._wait_until(
+            apply,
+            f"shard allocation to be set to {value or 'default'}",
+        )
 
     def _nodes(self, url: str) -> list[dict]:
         return self._call(url, "/_cat/nodes?format=json&h=name,version")
@@ -248,14 +311,19 @@ class RollingUpgrade:
 
         def ready() -> bool:
             current = self.cluster.pod(pod)
+
             if current is None or current["metadata"].get("deletionTimestamp"):
                 return False
+
             if current["spec"]["containers"][0]["image"] != image:
                 return False
+
             for status in current.get("status", {}).get("containerStatuses", []):
                 reason = status.get("state", {}).get("waiting", {}).get("reason")
+
                 if reason in IMAGE_FAILURES:
                     raise UpgradeError(f"{pod} could not start {image}: {reason}")
+
             return self._is_ready(current)
 
         self._wait_until(ready, f"{pod} to become ready on {image}")
@@ -270,18 +338,23 @@ class RollingUpgrade:
 
         def settled() -> bool:
             health = self._call(url, "/_cluster/health")
+
             if health["status"] == "green":
                 return True
+
             mixed = len({node["version"] for node in self._nodes(url)}) > 1
+
             moving = (
                 health["relocating_shards"]
                 + health["initializing_shards"]
                 + health.get("delayed_unassigned_shards", 0)
             )
+
             if health["status"] == "yellow" and mixed and not moving:
                 stable["polls"] += 1
             else:
                 stable["polls"] = 0
+
             return stable["polls"] >= SETTLED_POLLS
 
         try:
@@ -300,7 +373,9 @@ class RollingUpgrade:
     def _upgrade_node(self, pod: str, others: list[str], image: str) -> None:
         with self.cluster.port_forward(self._ready_pod(others)) as url:
             logger.info("Upgrading %s", pod)
+
             self._set_allocation(url, "primaries")
+
             try:
                 self._call(url, "/_flush", method="POST")
             except ElasticsearchError as exc:
@@ -315,9 +390,14 @@ class RollingUpgrade:
                     for node in self._nodes(url)
                 )
 
-            self._wait_until(rejoined, f"{pod} to rejoin on {self.target_version}")
+            self._wait_until(
+                rejoined,
+                f"{pod} to rejoin on {self.target_version}",
+            )
+
             self._set_allocation(url, None)
             self._wait_settled(url)
+
             logger.info("%s now runs %s", pod, self.target_version)
 
     def _verify(self, url: str, documents_before: int) -> list[str]:
@@ -328,24 +408,38 @@ class RollingUpgrade:
             return health["status"] == "green"
 
         problems = []
+
         try:
             self._wait_until(green, "the cluster to turn green")
         except UpgradeError as exc:
             problems.append(str(exc))
 
         versions = {node["version"] for node in self._nodes(url)}
+
         if versions != {self.target_version}:
             problems.append(f"Nodes report versions {sorted(versions)}")
 
-        settings = self._call(url, "/_cluster/settings?flat_settings=true")
-        if settings["persistent"].get(ALLOCATION_KEY) not in (None, "all"):
+        settings = self._call(
+            url,
+            "/_cluster/settings?flat_settings=true",
+        )
+
+        persistent_allocation = settings.get("persistent", {}).get(ALLOCATION_KEY)
+        transient_allocation = settings.get("transient", {}).get(ALLOCATION_KEY)
+
+        if persistent_allocation not in (None, "all") or transient_allocation not in (
+            None,
+            "all",
+        ):
             problems.append("Shard allocation was not restored")
 
         documents_after = self._call(url, "/_count")["count"]
+
         if documents_after < documents_before:
             problems.append(
                 f"Document count fell from {documents_before} to {documents_after}"
             )
+
         return problems
 
     def run(
@@ -369,23 +463,31 @@ class RollingUpgrade:
             "upgraded_nodes": [],
             "changes_made": False,
         }
+
         try:
             self._run(report, execute, accept_warnings, resume)
         except (UpgradeError, ElasticsearchError) as exc:
             report["status"] = "failed"
             report["message"] = str(exc)
+
             if report["changes_made"]:
                 report["message"] += (
                     ". Nodes cannot be downgraded: fix the cause and run again "
                     "with --resume."
                 )
+
         return report
 
     def _run(
-        self, report: dict, execute: bool, accept_warnings: bool, resume: bool
+        self,
+        report: dict,
+        execute: bool,
+        accept_warnings: bool,
+        resume: bool,
     ) -> None:
         statefulset = self.cluster.statefulset()
         strategy = statefulset["spec"]["updateStrategy"]["type"]
+
         if strategy != "OnDelete":
             raise UpgradeError(
                 f"updateStrategy must be OnDelete, not {strategy}: Kubernetes would "
@@ -395,15 +497,18 @@ class RollingUpgrade:
         container = statefulset["spec"]["template"]["spec"]["containers"][0]
         repository = container["image"].rpartition(":")[0]
         image = f"{repository}:{self.target_version}"
+
         pods = [
             f"{self.cluster.name}-{index}"
             for index in range(statefulset["spec"]["replicas"])
         ]
+
         if len(pods) < 2:
             raise UpgradeError("A rolling upgrade needs at least two nodes")
 
         config_problems = validate_statefulset(statefulset)
         report["config_problems"] = config_problems
+
         if config_problems:
             report["status"] = "blocked"
             report["message"] = "Unsafe configuration: " + "; ".join(config_problems)
@@ -412,8 +517,14 @@ class RollingUpgrade:
         with self.cluster.port_forward(self._ready_pod(pods)) as url:
             gate = self.checks(url, self.target_version)
             report["checks"] = gate["checks"]
-            master = self._call(url, "/_cat/master?format=json&h=node")[0]["node"]
+
+            master = self._call(
+                url,
+                "/_cat/master?format=json&h=node",
+            )[0]["node"]
+
             documents_before = self._call(url, "/_count")["count"]
+
             if resume:
                 self._require_resumable(url)
 
@@ -423,13 +534,15 @@ class RollingUpgrade:
             if check["status"] == "failed"
             and not (resume and check["name"] in RESUME_IGNORED_CHECKS)
         ]
+
         # Taking a snapshot below resolves the missing snapshot warning.
         warned = [
-            c["name"]
-            for c in gate["checks"]
-            if c["status"] == "warning"
-            and not (self.snapshot_repository and c["name"] == "snapshot")
+            check["name"]
+            for check in gate["checks"]
+            if check["status"] == "warning"
+            and not (self.snapshot_repository and check["name"] == "snapshot")
         ]
+
         if failed:
             report["status"] = "blocked"
             report["message"] = f"Failed checks: {', '.join(failed)}"
@@ -439,23 +552,29 @@ class RollingUpgrade:
         order = [pod for pod in pods if pod != master] + [
             pod for pod in pods if pod == master
         ]
+
         remaining = []
+
         for pod in order:
             # A pod on the target image that never became ready still needs work.
             current = self.cluster.pod(pod)
+
             if (
                 current
                 and current["spec"]["containers"][0]["image"] == image
                 and self._is_ready(current)
             ):
                 continue
+
             remaining.append(pod)
+
         report["plan"] = remaining
 
         if not execute:
             report["status"] = "dry_run"
             report["message"] = "Dry run only; no changes were made"
             return
+
         if warned and not accept_warnings:
             report["status"] = "blocked"
             report["message"] = f"Warnings need --accept-warnings: {', '.join(warned)}"
@@ -464,6 +583,7 @@ class RollingUpgrade:
         with self.cluster.port_forward(self._ready_pod(pods)) as url:
             if self.backup_dir:
                 report["config_backup"] = self._back_up_config(url, statefulset)
+
             if self.snapshot_repository:
                 report["snapshot"] = self._take_snapshot(url)
 
@@ -471,18 +591,22 @@ class RollingUpgrade:
         self.cluster.set_image(container["name"], image)
 
         current_pod = None
+
         try:
             for pod in remaining:
                 current_pod = pod
                 others = [other for other in order if other != pod]
+
                 self._upgrade_node(pod, others, image)
                 report["upgraded_nodes"].append(pod)
+
         except (UpgradeError, ElasticsearchError):
             self._restore_allocation(current_pod, pods)
             raise
 
         with self.cluster.port_forward(order[0]) as url:
             problems = self._verify(url, documents_before)
+
         if problems:
             raise UpgradeError("; ".join(problems))
 
@@ -491,12 +615,14 @@ class RollingUpgrade:
 
     def _require_resumable(self, url: str) -> None:
         health = self._call(url, "/_cluster/health")
+
         if health["status"] == "red":
             raise UpgradeError("Cannot resume while the cluster is red")
 
         # A failed target can be replaced, but nodes can never move backwards.
         target = parse_version(self.target_version)
         versions = [parse_version(node["version"]) for node in self._nodes(url)]
+
         if target is None or any(version > target for version in versions):
             raise UpgradeError(
                 f"Some nodes already run a version newer than {self.target_version}"
@@ -513,20 +639,27 @@ class RollingUpgrade:
         """Return a pod able to answer requests."""
         for name in candidates:
             pod = self.cluster.pod(name)
+
             if pod and self._is_ready(pod):
                 return name
+
         raise UpgradeError(f"None of these pods is ready: {', '.join(candidates)}")
 
     def _restore_allocation(self, failed_pod: str | None, pods: list[str]) -> None:
-        """Let replicas recover while the failed node is being investigated."""
+        """Restore default shard allocation after a failed upgrade."""
         try:
             survivor = self._ready_pod([pod for pod in pods if pod != failed_pod])
+
             with self.cluster.port_forward(survivor) as url:
                 self._call(
                     url,
                     "/_cluster/settings",
                     method="PUT",
-                    body={"persistent": {ALLOCATION_KEY: None}},
+                    body={
+                        "persistent": {ALLOCATION_KEY: None},
+                        "transient": {ALLOCATION_KEY: None},
+                    },
                 )
+
         except (UpgradeError, ElasticsearchError) as exc:
             logger.error("Could not restore shard allocation: %s", exc)
