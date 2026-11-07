@@ -255,7 +255,7 @@ jobs:
           echo "Verifying Elasticsearch index template..."
           curl --fail --silent --show-error \
             "http://127.0.0.1:9200/_index_template/guardian-reports-template" \
-            | python -c 'import json,sys; d=json.load(sys.stdin); t=d["index_templates"][0]["index_template"]["template"]["settings"]["index"]; assert t["number_of_replicas"] == "0"; print("Index template verified: replicas=0")'
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); t=d["index_templates"][0]["index_template"]["template"]["settings"]["index"]; assert t["number_of_replicas"] == "0"; print("Index template verified: replicas=0")'
 
           echo "Candidate passed. Switching production..."
 
