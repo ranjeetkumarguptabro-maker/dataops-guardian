@@ -54,6 +54,47 @@ class SplunkTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(publish_report({})["status"], "failed")
 
+    @patch("dataguardian.splunk.urlopen")
+    def test_send_event_includes_splunk_metadata(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value = MagicMock()
+
+        send_event(URL, "test-token", {"status": "ready"}, timestamp=1234567890)
+
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data)
+
+        self.assertEqual(payload["time"], 1234567890)
+        self.assertEqual(payload["source"], "dataops-guardian")
+        self.assertEqual(payload["sourcetype"], "dataguardian:report")
+        self.assertEqual(payload["event"], {"status": "ready"})
+
+    @patch("dataguardian.splunk.send_event")
+    def test_publish_adds_operational_metadata_and_timestamp(self, mock_send):
+        mock_send.return_value = {"status": "passed", "message": "accepted"}
+        report = {
+            "component": "dataguardian-platform-status",
+            "status": "alert",
+            "generated_at": "2026-11-07T10:00:00+00:00",
+        }
+        env = {
+            "SPLUNK_HEC_URL": URL,
+            "SPLUNK_HEC_TOKEN": "secret-token",
+            "APP_ENV": "test",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            result = publish_report(report)
+
+        self.assertEqual(result["status"], "passed")
+        args, kwargs = mock_send.call_args
+        event = args[2]
+        self.assertEqual(event["service"], "dataops-guardian")
+        self.assertEqual(event["event_type"], "dataguardian-platform-status")
+        self.assertEqual(event["severity"], "ERROR")
+        self.assertEqual(event["environment"], "test")
+        self.assertEqual(kwargs["timestamp"], 1794045600.0)
+        self.assertNotIn("service", report)
+
 
 if __name__ == "__main__":
     unittest.main()

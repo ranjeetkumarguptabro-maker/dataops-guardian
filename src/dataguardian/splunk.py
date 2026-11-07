@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import ssl
+import time
+from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -11,6 +13,7 @@ from urllib.request import Request, urlopen
 logger = logging.getLogger("dataguardian.splunk")
 
 SOURCETYPE = "dataguardian:report"
+SOURCE = "dataops-guardian"
 
 
 def _request(url: str, timeout: float, token: str | None = None, body=None) -> dict:
@@ -56,13 +59,24 @@ def check_splunk_health(hec_url: str, timeout: float = 5.0) -> dict:
     return {"name": "splunk_hec", **result}
 
 
-def send_event(hec_url: str, token: str, event: dict, timeout: float = 5.0) -> dict:
+def send_event(
+    hec_url: str,
+    token: str,
+    event: dict,
+    timeout: float = 5.0,
+    timestamp: float | None = None,
+) -> dict:
     """Send one event to the HTTP Event Collector."""
     return _request(
         hec_url.rstrip("/") + "/services/collector/event",
         timeout,
         token=token,
-        body={"event": event, "sourcetype": SOURCETYPE},
+        body={
+            "time": timestamp if timestamp is not None else time.time(),
+            "source": SOURCE,
+            "sourcetype": SOURCETYPE,
+            "event": event,
+        },
     )
 
 
@@ -77,7 +91,39 @@ def publish_report(report: dict) -> dict:
     if not url or not token:
         return {"status": "skipped", "message": "Splunk is not configured"}
 
-    result = send_event(url, token, report)
+    event = dict(report)
+    status = str(event.get("status", "unknown")).lower()
+
+    severity = (
+        "ERROR" if status in {"failed", "blocked", "alert", "unhealthy"}
+        else "WARN" if status in {"warning", "degraded"}
+        else "INFO"
+    )
+
+    timestamp = (
+        event.get("generated_at")
+        or event.get("checked_at")
+        or event.get("timestamp")
+    )
+
+    if timestamp:
+        try:
+            parsed = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            event_time = parsed.timestamp()
+        except (ValueError, TypeError, OverflowError):
+            event_time = time.time()
+    else:
+        event_time = time.time()
+
+    event.setdefault("service", "dataops-guardian")
+    event.setdefault("event_type", event.get("component", "maintenance_report"))
+    event.setdefault("severity", severity)
+    environment = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "unknown"))
+    event.setdefault("environment", environment)
+
+    result = send_event(url, token, event, timestamp=event_time)
     if result["status"] != "passed":
         logger.warning("Could not send report to Splunk: %s", result["message"])
     return result
