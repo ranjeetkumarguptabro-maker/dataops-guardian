@@ -50,7 +50,6 @@ class HealthServerTests(unittest.TestCase):
         self.addCleanup(caught.exception.close)
         self.assertEqual(caught.exception.code, 404)
 
-
     def test_ready_returns_200_when_elasticsearch_is_green(self):
         with (
             patch.dict(os.environ, {"ELASTICSEARCH_URL": "http://elasticsearch:9200"}),

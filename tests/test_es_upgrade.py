@@ -148,9 +148,7 @@ class FakeCluster:
             return {"status": status, "relocating_shards": 0, "initializing_shards": 0}
 
         if path == "/_cluster/settings?flat_settings=true":
-            persistent = (
-                {ALLOCATION_KEY: self.allocation} if self.allocation else {}
-            )
+            persistent = {ALLOCATION_KEY: self.allocation} if self.allocation else {}
             transient = (
                 {ALLOCATION_KEY: self.transient_allocation}
                 if self.transient_allocation

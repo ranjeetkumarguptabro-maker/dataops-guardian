@@ -95,15 +95,15 @@ def publish_report(report: dict) -> dict:
     status = str(event.get("status", "unknown")).lower()
 
     severity = (
-        "ERROR" if status in {"failed", "blocked", "alert", "unhealthy"}
-        else "WARN" if status in {"warning", "degraded"}
+        "ERROR"
+        if status in {"failed", "blocked", "alert", "unhealthy"}
+        else "WARN"
+        if status in {"warning", "degraded"}
         else "INFO"
     )
 
     timestamp = (
-        event.get("generated_at")
-        or event.get("checked_at")
-        or event.get("timestamp")
+        event.get("generated_at") or event.get("checked_at") or event.get("timestamp")
     )
 
     if timestamp:

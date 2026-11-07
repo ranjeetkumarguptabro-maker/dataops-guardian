@@ -1,4 +1,3 @@
-
 """HTTP health and readiness server for DataOps Guardian."""
 
 import json
@@ -45,9 +44,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     {
                         "service": service,
                         "status": "not_ready",
-                        "dependencies": {
-                            "elasticsearch": {"status": "not_configured"}
-                        },
+                        "dependencies": {"elasticsearch": {"status": "not_configured"}},
                     },
                 )
                 return
@@ -60,9 +57,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 )
 
                 cluster_status = (
-                    cluster.get("status")
-                    if isinstance(cluster, dict)
-                    else None
+                    cluster.get("status") if isinstance(cluster, dict) else None
                 )
 
                 ready = cluster_status in {"green", "yellow"}
@@ -70,15 +65,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                 dependency = {
                     "status": cluster_status or "unknown",
                     "error_type": (
-                        None if cluster_status in {"green", "yellow", "red"}
+                        None
+                        if cluster_status in {"green", "yellow", "red"}
                         else "invalid_response"
                     ),
                 }
 
                 if cluster_status == "yellow":
-                    dependency["warning"] = (
-                        "Cluster has unassigned replicas"
-                    )
+                    dependency["warning"] = "Cluster has unassigned replicas"
 
             except ElasticsearchError:
                 ready = False
