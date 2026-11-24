@@ -8,8 +8,13 @@
 </p>
 
 <p align="center">
+  It solves the risk of manual server setups, unverified deployments, exposed database ports, and hardcoded cloud credentials.<br/>
+  It also eliminates data-loss gaps by automating daily Elasticsearch snapshot backups and retention policies to private Amazon S3 storage.
+</p>
+
+<p align="center">
   I built this project to take a containerized Python data operations platform (Elasticsearch, Kibana, and health automation) all the way from local source code to a live, HTTPS-secured deployment on AWS EC2.<br/>
-  Everything from Ruff linting, pytest, and Kubernetes/Helm validation to GitHub Actions CI/CD on a self-hosted EC2 runner runs end to end, eliminating manual deployments, hardcoded credentials, and exposed database ports.<br/>
+  Everything from Ruff linting, pytest, and Kubernetes/Helm validation to GitHub Actions CI/CD on a self-hosted EC2 runner runs end to end.<br/>
   On top of the deployment, I configured Nginx with Let's Encrypt HTTPS, an AWS IAM instance role, and automated Elasticsearch Snapshot Lifecycle Management (SLM) to back up data daily to a private Amazon S3 bucket.
 </p>
 
