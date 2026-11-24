@@ -1,27 +1,34 @@
+<div align="center">
+
 # 🛡️ DataOps Guardian
+### Automated Data Operations, CI/CD, Cloud Deployment & S3 Backup Management
 
-DataOps Guardian automates end-to-end operations for an Elasticsearch and Kibana data platform—covering preflight and upgrade checks, service health monitoring, automated CI/CD testing and deployment, HTTPS exposure, and scheduled snapshot backups to Amazon S3.
+<p align="center">
+  <b>A hands-on DevOps, DataOps, and Cloud Infrastructure implementation for Python automation, Elasticsearch & Kibana, Docker Compose, GitHub Actions CI/CD, HTTPS, and Amazon S3 snapshot backups on AWS.</b>
+</p>
 
-Manual server setups, unverified deployments, exposed database ports, hardcoded cloud credentials, and unreliable backups create operational risk and downtime. DataOps Guardian eliminates these failure points through automated pipelines, private networking, IAM role-based access, and lifecycle-managed S3 backups.
+<p align="center">
+  I built this project to take a containerized Python data operations platform (Elasticsearch, Kibana, and health automation) all the way from local source code to a live, HTTPS-secured deployment on AWS EC2.<br/>
+  Everything from Ruff linting, pytest, and Kubernetes/Helm validation to GitHub Actions CI/CD on a self-hosted EC2 runner runs end to end, eliminating manual deployments, hardcoded credentials, and exposed database ports.<br/>
+  On top of the deployment, I configured Nginx with Let's Encrypt HTTPS, an AWS IAM instance role, and automated Elasticsearch Snapshot Lifecycle Management (SLM) to back up data daily to a private Amazon S3 bucket.
+</p>
 
-Built as a production-style cloud deployment on AWS EC2 (`eu-north-1`), the stack runs a containerized Python service alongside Elasticsearch 8.17.4 and Kibana 8.17.4 with Docker Compose, served over HTTPS via Nginx, DuckDNS, and Let's Encrypt. Every push runs Ruff linting, pytest, and Kubernetes/Helm validation in GitHub Actions before deploying through a self-hosted EC2 runner, while an IAM instance role (`DataOpsGuardianBackupRole`) backs up Elasticsearch indices to a private Amazon S3 bucket on an automated daily Snapshot Lifecycle Management (SLM) schedule.
-
-### 📸 Quick Navigation (Screenshots)
-
-- [Architecture Diagram](#architecture-diagram)
-- [DevOps Stack](#devops-technology-stack)
-- [CI/CD Workflow](#cicd-workflow)
-- [EC2 Instance](#ec2-instance)
-- [IAM Role](#iam-role-configuration)
-- [Inbound Rules](#inbound-security-rules)
-- [Health Check](#application-health-check)
-- [S3 Backup Bucket](#s3-backup-bucket)
-- [Backup Verification](#backup-verification)
-- [SLM Policy](#slm-backup-policy)
-- [Daily Backup Policy](#daily-backup-configuration)
-- [Dev Environment](#development-environment)
+[Architecture](#architecture-diagram) •
+[DevOps Stack](#devops-technology-stack) •
+[CI/CD](#cicd-workflow) •
+[EC2](#ec2-instance) •
+[IAM Role](#iam-role-configuration) •
+[Security Rules](#inbound-security-rules) •
+[Health Check](#application-health-check) •
+[S3 Bucket](#s3-backup-bucket) •
+[Backups](#backup-verification) •
+[SLM Policy](#slm-backup-policy) •
+[Daily Backup](#daily-backup-configuration) •
+[Dev Env](#development-environment)
 
 ---
+
+</div>
 
 # 🏗️ 1. System Architecture
 
