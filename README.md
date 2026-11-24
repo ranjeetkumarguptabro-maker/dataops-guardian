@@ -39,18 +39,6 @@
 
 The architecture illustrates how the application, CI/CD pipeline, AWS infrastructure and data services work together.
 
-**Architecture components:**
-
-- **GitHub:** Source code management and version control.
-- **GitHub Actions:** Automated testing and deployment.
-- **AWS EC2:** Hosts the application environment.
-- **Docker Compose:** Manages application containers.
-- **Nginx:** Reverse proxy for incoming web traffic.
-- **Elasticsearch:** Data indexing and storage.
-- **Kibana:** Elasticsearch data exploration.
-- **Amazon S3:** Stores snapshot backups.
-- **AWS IAM:** Manages access permissions.
-
 ### Architecture Diagram
 
 ![DataOps Guardian Architecture](docs/images/architecture.png)
