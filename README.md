@@ -1,23 +1,25 @@
 # 🛡️ DataOps Guardian
 
-### Automated Data Operations, CI/CD, Cloud Deployment and Backup Management
+DataOps Guardian automates end-to-end operations for an Elasticsearch and Kibana data platform—covering preflight and upgrade checks, service health monitoring, automated CI/CD testing and deployment, HTTPS exposure, and scheduled snapshot backups to Amazon S3.
 
-DataOps Guardian is a hands-on DevOps and cloud operations project designed to demonstrate automated testing, application deployment, cloud infrastructure management, monitoring and data backup.
+Manual server setups, unverified deployments, exposed database ports, hardcoded cloud credentials, and unreliable backups create operational risk and downtime. DataOps Guardian eliminates these failure points through automated pipelines, private networking, IAM role-based access, and lifecycle-managed S3 backups.
 
-The project combines Python, Docker, GitHub Actions, AWS, Elasticsearch and Kibana to build a containerized application environment with automated CI/CD, HTTPS access and Elasticsearch snapshot backups stored in Amazon S3.
+Built as a production-style cloud deployment on AWS EC2 (`eu-north-1`), the stack runs a containerized Python service alongside Elasticsearch 8.17.4 and Kibana 8.17.4 with Docker Compose, served over HTTPS via Nginx, DuckDNS, and Let's Encrypt. Every push runs Ruff linting, pytest, and Kubernetes/Helm validation in GitHub Actions before deploying through a self-hosted EC2 runner, while an IAM instance role (`DataOpsGuardianBackupRole`) backs up Elasticsearch indices to a private Amazon S3 bucket on an automated daily Snapshot Lifecycle Management (SLM) schedule.
 
-### Key Features
+### 📸 Quick Navigation (Screenshots)
 
-- Automated CI/CD using GitHub Actions.
-- Docker-based application deployment.
-- AWS EC2 cloud infrastructure.
-- Elasticsearch and Kibana integration.
-- Nginx reverse proxy and HTTPS.
-- Private Amazon S3 backup storage.
-- Automated Elasticsearch snapshot lifecycle policy.
-- AWS IAM role-based access.
-- Application health checks.
-- Kubernetes and Helm deployment validation.
+- [Architecture Diagram](#architecture-diagram)
+- [DevOps Stack](#devops-technology-stack)
+- [CI/CD Workflow](#cicd-workflow)
+- [EC2 Instance](#ec2-instance)
+- [IAM Role](#iam-role-configuration)
+- [Inbound Rules](#inbound-security-rules)
+- [Health Check](#application-health-check)
+- [S3 Backup Bucket](#s3-backup-bucket)
+- [Backup Verification](#backup-verification)
+- [SLM Policy](#slm-backup-policy)
+- [Daily Backup Policy](#daily-backup-configuration)
+- [Dev Environment](#development-environment)
 
 ---
 
@@ -44,28 +46,6 @@ The architecture illustrates how the application, CI/CD pipeline, AWS infrastruc
 ---
 
 # 🧰 2. Technology Stack
-
-The project uses modern DevOps, cloud computing and data technologies.
-
-| Technology | Purpose |
-|---|---|
-| Python | Application development and automation |
-| pytest | Automated testing |
-| Ruff | Code quality and linting |
-| Git and GitHub | Version control |
-| GitHub Actions | CI/CD automation |
-| Docker | Containerization |
-| Docker Compose | Container management |
-| Elasticsearch 8.17.4 | Search and data storage |
-| Kibana 8.17.4 | Data exploration |
-| AWS EC2 | Cloud computing |
-| Amazon S3 | Backup storage |
-| AWS IAM | Access management |
-| Nginx | Reverse proxy |
-| DuckDNS | Domain configuration |
-| Let's Encrypt | HTTPS certificates |
-| Certbot | Certificate renewal |
-| Kubernetes and Helm | Deployment configuration and validation |
 
 ### DevOps Technology Stack
 
